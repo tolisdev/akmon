@@ -35,6 +35,8 @@
 		logo_url: '',
 		pushover_user_key: '',
 		pushover_api_token: '',
+		pushover_sound_down: 'siren',
+		pushover_sound_up: 'magic',
 		smtp_host: '',
 		smtp_port: '587',
 		smtp_secure: 'false',
@@ -226,6 +228,8 @@
 						logo_url: s.logo_url || '',
 						pushover_user_key: s.pushover_user_key || '',
 						pushover_api_token: s.pushover_api_token || '',
+						pushover_sound_down: s.pushover_sound_down || 'siren',
+						pushover_sound_up: s.pushover_sound_up || 'magic',
 						smtp_host: s.smtp_host || '',
 						smtp_port: s.smtp_port || '587',
 						smtp_secure: s.smtp_secure || 'false',
@@ -1091,6 +1095,39 @@
 						<div>
 							<label for="set-push-token" class="block text-zinc-400 mb-1">API TOKEN / APP TOKEN</label>
 							<input id="set-push-token" type="text" bind:value={settingsForm.pushover_api_token} placeholder="e.g. az123456789..." class="w-full px-3 py-2 bg-[#18181b] border border-zinc-700 rounded text-white focus:outline-none" />
+						</div>
+					</div>
+
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+						<div>
+							<label for="set-push-sound-down" class="block text-zinc-400 mb-1">🚨 DOWN / OUTAGE SOUND</label>
+							<select id="set-push-sound-down" bind:value={settingsForm.pushover_sound_down} class="w-full px-3 py-2 bg-[#18181b] border border-zinc-700 rounded text-white focus:outline-none font-sans">
+								<option value="siren">🚨 Siren (Emergency)</option>
+								<option value="falling">📉 Falling Tone</option>
+								<option value="alien">👾 Alien Sound</option>
+								<option value="gamelan">🔔 Gamelan Chime</option>
+								<option value="spacealarm">🚀 Space Alarm</option>
+								<option value="tugboat">🚢 Tug Boat</option>
+								<option value="vortex">🌀 Vortex</option>
+								<option value="echo">📢 Echo</option>
+								<option value="mechanical">⚙️ Mechanical</option>
+								<option value="pushover">📱 Pushover Default</option>
+								<option value="none">🔕 Silent / No Sound</option>
+							</select>
+						</div>
+						<div>
+							<label for="set-push-sound-up" class="block text-zinc-400 mb-1">✨ UP / RESTORED SOUND</label>
+							<select id="set-push-sound-up" bind:value={settingsForm.pushover_sound_up} class="w-full px-3 py-2 bg-[#18181b] border border-zinc-700 rounded text-white focus:outline-none font-sans">
+								<option value="magic">✨ Magic Wand (Restored)</option>
+								<option value="climb">🧗 Climb (Restored)</option>
+								<option value="piano_bar">🎹 Piano Bar</option>
+								<option value="cashregister">💰 Cash Register</option>
+								<option value="incoming">📨 Incoming</option>
+								<option value="intermission">🍿 Intermission</option>
+								<option value="updown">⬆️⬇️ Up Down</option>
+								<option value="pushover">📱 Pushover Default</option>
+								<option value="none">🔕 Silent / No Sound</option>
+							</select>
 						</div>
 					</div>
 

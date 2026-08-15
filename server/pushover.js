@@ -3,9 +3,10 @@ import { getSetting } from './db.js';
 /**
  * Pushover Alert Notification Handler
  * Dynamic credentials from SQLite settings table or process.env
+ * Automatically applies configured Pushover sounds for UP vs DOWN status
  */
 
-export async function sendPushoverNotification({ title, message, priority = 1, sound = 'pushover' }) {
+export async function sendPushoverNotification({ title, message, priority = 1, sound = null }) {
   const enabled = getSetting('pushover_enabled', 'true');
   if (enabled !== 'true' && enabled !== true && enabled !== '1') {
     console.log('[Pushover Skipped] Disabled in settings.');
@@ -20,13 +21,22 @@ export async function sendPushoverNotification({ title, message, priority = 1, s
     return { ok: false, reason: 'Missing User Key or API Token' };
   }
 
+  const soundDown = getSetting('pushover_sound_down', 'siren');
+  const soundUp = getSetting('pushover_sound_up', 'magic');
+
+  let selectedSound = sound;
+  if (!selectedSound || selectedSound === 'pushover') {
+    const isUp = title.toLowerCase().includes('up') || title.toLowerCase().includes('restored');
+    selectedSound = isUp ? soundUp : soundDown;
+  }
+
   const params = new URLSearchParams({
     token: apiToken,
     user: userKey,
     title,
     message,
     priority: String(priority),
-    sound
+    sound: selectedSound
   });
 
   if (Number(priority) === 2) {
@@ -43,7 +53,7 @@ export async function sendPushoverNotification({ title, message, priority = 1, s
 
     const data = await res.json();
     if (res.ok && data.status === 1) {
-      console.log(`[Pushover Sent] Priority ${priority} -> ${title}`);
+      console.log(`[Pushover Sent] Sound: ${selectedSound} | Priority ${priority} -> ${title}`);
       return { ok: true, data };
     }
     console.warn(`[Pushover Error] API Response (${res.status}):`, data);

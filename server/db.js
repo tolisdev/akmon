@@ -56,6 +56,8 @@ db.exec(`
   INSERT OR IGNORE INTO settings (key, value) VALUES
     ('password_auth_enabled', 'true'),
     ('pushover_enabled', 'true'),
+    ('pushover_sound_down', 'siren'),
+    ('pushover_sound_up', 'magic'),
     ('smtp_enabled', 'false'),
     ('oidc_enabled', 'false'),
     ('logo_url', '');
