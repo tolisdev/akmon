@@ -843,42 +843,53 @@
 	</div>
 {:else}
 	<!-- Admin Dashboard Header -->
-	<div class="w-full border-b border-[#27272a] bg-[#09090b]/80 backdrop-blur sticky top-0 z-30">
-		<div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-			<div class="flex items-center gap-4">
-				<a href="/" class="text-xs text-zinc-400 hover:text-white transition-colors">← Public Status</a>
-				<div class="h-4 w-px bg-zinc-800"></div>
-				{#if authOptions.logo_url && authOptions.logo_url.trim() !== ''}
-					<img src={authOptions.logo_url} alt="Logo" class="h-7 w-auto max-w-[140px] object-contain rounded" />
-				{/if}
-				<h1 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
-					<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-					Management Console
-				</h1>
+	<div class="w-full border-b border-[#27272a] bg-[#09090b]/90 backdrop-blur sticky top-0 z-30">
+		<div class="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+			<div class="flex items-center justify-between sm:justify-start gap-3">
+				<div class="flex items-center gap-3">
+					<a href="/" class="text-xs text-zinc-400 hover:text-white transition-colors flex items-center gap-1 font-mono">
+						<span>←</span> Public Status
+					</a>
+					<div class="h-4 w-px bg-zinc-800"></div>
+					{#if authOptions.logo_url && authOptions.logo_url.trim() !== ''}
+						<img src={authOptions.logo_url} alt="Logo" class="h-6 sm:h-7 w-auto max-w-[120px] object-contain rounded" />
+					{/if}
+					<h1 class="text-sm sm:text-base font-bold text-white tracking-wide flex items-center gap-2">
+						<span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+						<span class="truncate">Management</span>
+					</h1>
+				</div>
+
+				<button
+					onclick={logout}
+					class="sm:hidden px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 rounded text-xs font-mono"
+				>
+					Logout
+				</button>
 			</div>
 
-			<div class="flex items-center gap-3">
+			<div class="grid grid-cols-3 sm:flex items-center gap-2">
 				<button
 					onclick={openStatusPagesModal}
-					class="px-3 py-1.5 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 rounded text-xs flex items-center gap-1.5 transition-colors font-mono shadow"
+					class="px-2.5 sm:px-3 py-1.5 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 rounded text-xs flex items-center justify-center gap-1.5 transition-colors font-mono shadow truncate"
 				>
-					<span>🔗</span> Share Client Page
+					<span>🔗</span> <span class="hidden sm:inline">Share</span> Client Page
 				</button>
 				<button
 					onclick={openSettingsModal}
-					class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded text-xs flex items-center gap-1.5 transition-colors font-mono"
+					class="px-2.5 sm:px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded text-xs flex items-center justify-center gap-1.5 transition-colors font-mono truncate"
 				>
-					⚙️ Settings & Alerts
+					⚙️ Settings
 				</button>
 				<button
 					onclick={openCreateModal}
-					class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-black font-semibold rounded text-xs flex items-center gap-1.5 transition-colors shadow"
+					class="px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-black font-semibold rounded text-xs flex items-center justify-center gap-1.5 transition-colors shadow truncate"
 				>
-					<span>+</span> Add Monitor
+					<span>+</span> Add <span class="hidden sm:inline">Monitor</span>
 				</button>
 				<button
 					onclick={logout}
-					class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 rounded text-xs transition-colors font-mono"
+					class="hidden sm:block px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 rounded text-xs transition-colors font-mono"
 				>
 					Logout
 				</button>
@@ -928,7 +939,72 @@
 				</div>
 			</div>
 
-			<div class="overflow-x-auto">
+			<!-- Mobile Touch-Optimized Cards (< 768px) -->
+			<div class="block md:hidden divide-y divide-[#27272a]/80">
+				{#if loading}
+					<div class="p-8 text-center text-zinc-500 font-mono text-xs">Loading monitor telemetry...</div>
+				{:else if monitors.length === 0}
+					<div class="p-8 text-center text-zinc-500 font-mono text-xs">No monitors configured yet. Click "+ Add Monitor" above.</div>
+				{:else}
+					{#each monitors as m (m.id)}
+						<div class="p-4 space-y-3 hover:bg-zinc-800/20 transition-colors">
+							<div class="flex items-start justify-between gap-2">
+								<div class="space-y-1">
+									<div class="flex items-center gap-2 flex-wrap">
+										<span class="font-bold text-white text-sm font-sans">{m.name}</span>
+										{#if m.is_public === 0}
+											<span class="px-1.5 py-0.5 text-[9px] font-mono rounded bg-zinc-800 border border-zinc-700 text-zinc-400 font-bold">🔒 PRIVATE</span>
+										{/if}
+									</div>
+									<div class="text-xs text-zinc-400 font-mono truncate max-w-[220px]">{m.url || 'Agent Ingestion'}</div>
+								</div>
+
+								<button
+									onclick={(e) => toggleRowMenu(m.id, e)}
+									class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 flex items-center justify-center font-bold text-base transition-colors flex-shrink-0"
+									title="Actions menu"
+								>
+									⋮
+								</button>
+							</div>
+
+							<div class="flex items-center justify-between gap-2 pt-1 border-t border-zinc-800/60 font-mono text-xs">
+								<div class="flex items-center gap-2 flex-wrap">
+									{#if m.active === 2}
+										<span class="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold">🛠️ MAINTENANCE</span>
+									{:else if m.active === 0}
+										<span class="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px]">PAUSED</span>
+									{:else if m.latest_status === 1}
+										<span class="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold flex items-center gap-1">
+											<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> UP
+										</span>
+									{:else if m.latest_status === 2}
+										<span class="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/30 text-amber-400 text-[10px] font-bold flex items-center gap-1">
+											<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> DEGRADED
+										</span>
+									{:else}
+										<span class="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-400 text-[10px] font-bold flex items-center gap-1">
+											<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> DOWN
+										</span>
+									{/if}
+									<span class="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-[10px] uppercase text-zinc-400">{m.type}</span>
+									<span class="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px]">{m.group_name || 'Default'}</span>
+								</div>
+
+								<div class="flex items-center gap-3">
+									{#if m.latest_ping > 0}
+										<span class="text-zinc-300">{m.latest_ping}ms</span>
+									{/if}
+									<span class="font-bold text-white">{m.uptime_pct}%</span>
+								</div>
+							</div>
+						</div>
+					{/each}
+				{/if}
+			</div>
+
+			<!-- Desktop Data Table (>= 768px) -->
+			<div class="hidden md:block overflow-x-auto">
 				<table class="w-full text-left border-collapse">
 					<thead>
 						<tr class="bg-[#09090b]/50 border-b border-[#27272a] text-[11px] font-mono text-zinc-400 uppercase">
