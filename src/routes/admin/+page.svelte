@@ -675,9 +675,9 @@
 							<th class="py-3 px-4">Name / Target</th>
 							<th class="py-3 px-4">Group</th>
 							<th class="py-3 px-4">Type</th>
-							<th class="py-3 px-4">SSL Certificate</th>
+							<th class="py-3 px-4 text-center">SSL</th>
 							<th class="py-3 px-4">Last Check / Ping</th>
-							<th class="py-3 px-4">Pushover Priority</th>
+							<th class="py-3 px-4 text-center">Prio</th>
 							<th class="py-3 px-4">Latency</th>
 							<th class="py-3 px-4">Latency Trend</th>
 							<th class="py-3 px-4">Uptime</th>
@@ -744,28 +744,31 @@
 										</span>
 									</td>
 
-									<!-- SSL Certificate -->
-									<td class="py-3 px-4">
+									<!-- SSL Status Dot -->
+									<td class="py-3 px-4 text-center">
 										{#if m.url && m.url.startsWith('https://')}
 											{#if m.ssl_days !== null && m.ssl_days !== undefined}
 												{#if m.ssl_days > 14}
-													<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold" title="Issuer: {m.ssl_issuer || 'Verified'}">
-														🔒 {m.ssl_days}d left ({m.ssl_issuer || 'Valid'})
-													</span>
+													<span
+														class="inline-block w-3 h-3 rounded-full bg-emerald-500 hover:scale-125 transition-transform cursor-help"
+														title="SSL Valid: {m.ssl_days} days remaining (Issuer: {m.ssl_issuer || 'Verified'})"
+													></span>
 												{:else if m.ssl_days > 0}
-													<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold animate-pulse" title="SSL Certificate Expiring Soon!">
-														⚠️ {m.ssl_days}d left ({m.ssl_issuer || 'Warning'})
-													</span>
+													<span
+														class="inline-block w-3 h-3 rounded-full bg-amber-400 animate-pulse hover:scale-125 transition-transform cursor-help"
+														title="SSL Warning: Only {m.ssl_days} days remaining! (Issuer: {m.ssl_issuer || 'Warning'})"
+													></span>
 												{:else}
-													<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 text-[10px] font-bold" title="SSL Expired or Invalid">
-														🚨 EXPIRED ({m.ssl_days}d)
-													</span>
+													<span
+														class="inline-block w-3 h-3 rounded-full bg-rose-500 hover:scale-125 transition-transform cursor-help"
+														title="SSL Alert: Expired or Invalid! ({m.ssl_days} days)"
+													></span>
 												{/if}
 											{:else}
-												<span class="text-zinc-500 text-[10px]">Checking TLS...</span>
+												<span class="inline-block w-3 h-3 rounded-full bg-zinc-700 animate-pulse cursor-help" title="Checking TLS Certificate..."></span>
 											{/if}
 										{:else}
-											<span class="text-zinc-600 text-[10px]">HTTP / N/A</span>
+											<span class="inline-block w-2 h-2 rounded-full bg-zinc-800 cursor-help" title="HTTP / Non-SSL Monitor"></span>
 										{/if}
 									</td>
 
@@ -779,20 +782,33 @@
 										{/if}
 									</td>
 
-									<!-- Pushover Priority -->
-									<td class="py-3 px-4">
+									<!-- Pushover Priority (Compact Number Badge) -->
+									<td class="py-3 px-4 text-center">
 										{#if m.pushover_priority === 2}
-											<span class="px-2 py-0.5 rounded bg-rose-950 border border-rose-500/40 text-rose-300 text-[10px] font-bold">
-												🚨 Prio 2 (Emergency Server)
-											</span>
+											<span
+												class="inline-flex items-center justify-center w-6 h-6 rounded bg-rose-950/80 border border-rose-500/40 text-rose-300 font-bold text-[11px] cursor-help"
+												title="Priority 2 (Emergency Server: Continuous Alarm until Ack)"
+											>2</span>
 										{:else if m.pushover_priority === 1}
-											<span class="px-2 py-0.5 rounded bg-amber-950 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
-												🔔 Prio 1 (High Website)
-											</span>
+											<span
+												class="inline-flex items-center justify-center w-6 h-6 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 font-bold text-[11px] cursor-help"
+												title="Priority 1 (High Website: Bypasses Quiet Hours)"
+											>1</span>
+										{:else if m.pushover_priority === 0}
+											<span
+												class="inline-flex items-center justify-center w-6 h-6 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-[11px] cursor-help"
+												title="Priority 0 (Normal Alert)"
+											>0</span>
+										{:else if m.pushover_priority === -1}
+											<span
+												class="inline-flex items-center justify-center w-6 h-6 rounded bg-zinc-900 border border-zinc-800 text-zinc-500 font-bold text-[11px] cursor-help"
+												title="Priority -1 (Low Quiet Alert)"
+											>-1</span>
 										{:else}
-											<span class="px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[10px]">
-												Prio {m.pushover_priority || 0}
-											</span>
+											<span
+												class="inline-flex items-center justify-center w-6 h-6 rounded bg-zinc-900 border border-zinc-800 text-zinc-600 font-bold text-[11px] cursor-help"
+												title="Priority -2 (Lowest Silent Alert)"
+											>-2</span>
 										{/if}
 									</td>
 
