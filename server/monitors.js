@@ -1,9 +1,68 @@
 import ping from 'ping';
-import { getAllMonitors, insertHeartbeat, getLatestHeartbeat, getSetting } from './db.js';
+import tls from 'tls';
+import { URL } from 'url';
+import { getAllMonitors, insertHeartbeat, getLatestHeartbeat, getSetting, updateMonitorSsl } from './db.js';
 import { sendPushoverNotification } from './pushover.js';
 import { sendEmailNotification } from './email.js';
 
 let isScanning = false;
+
+export function checkSslCertificate(urlStr) {
+  return new Promise((resolve) => {
+    try {
+      if (!urlStr || !urlStr.startsWith('https://')) {
+        return resolve(null);
+      }
+
+      const parsedUrl = new URL(urlStr);
+      const hostname = parsedUrl.hostname;
+      const port = parsedUrl.port ? parseInt(parsedUrl.port, 10) : 443;
+
+      const socket = tls.connect(
+        {
+          host: hostname,
+          port: port,
+          servername: hostname,
+          timeout: 5000,
+          rejectUnauthorized: false
+        },
+        () => {
+          const cert = socket.getPeerCertificate();
+          socket.end();
+
+          if (!cert || !cert.valid_to || Object.keys(cert).length === 0) {
+            return resolve({ valid: false, daysRemaining: 0, issuer: 'Unknown', error: 'No certificate data' });
+          }
+
+          const validTo = new Date(cert.valid_to);
+          const now = new Date();
+          const daysRemaining = Math.floor((validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const valid = socket.authorized && daysRemaining > 0;
+          const issuerName = cert.issuer ? (cert.issuer.O || cert.issuer.CN || 'Unknown') : 'Unknown';
+
+          resolve({
+            valid,
+            daysRemaining,
+            validTo: validTo.toISOString(),
+            issuer: issuerName
+          });
+        }
+      );
+
+      socket.on('error', (err) => {
+        socket.destroy();
+        resolve({ valid: false, daysRemaining: 0, issuer: 'Unknown', error: err.message });
+      });
+
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve({ valid: false, daysRemaining: 0, issuer: 'Unknown', error: 'TLS Timeout' });
+      });
+    } catch (err) {
+      resolve(null);
+    }
+  });
+}
 
 async function checkHttpMonitor(monitor) {
   const startTime = Date.now();
@@ -53,15 +112,15 @@ async function checkHttpMonitor(monitor) {
       }
     }
 
-    // Check TLS Certificate Expiration Days if HTTPS
+    // Real TLS Certificate Expiration Days Check if HTTPS
     let sslDays = null;
+    let sslIssuer = null;
     if (monitor.url.startsWith('https://')) {
-      try {
-        const urlObj = new URL(monitor.url);
-        // Simple heuristic estimate or placeholder for node native TLS check
-        sslDays = 90; // Default SSL healthy placeholder
-      } catch (e) {
-        sslDays = null;
+      const sslInfo = await checkSslCertificate(monitor.url);
+      if (sslInfo) {
+        sslDays = sslInfo.daysRemaining;
+        sslIssuer = sslInfo.issuer;
+        updateMonitorSsl(monitor.id, sslDays, sslIssuer);
       }
     }
 
@@ -69,7 +128,8 @@ async function checkHttpMonitor(monitor) {
       status: 1,
       ping_ms: latency,
       msg: `HTTP ${res.status} OK`,
-      ssl_days: sslDays
+      ssl_days: sslDays,
+      ssl_issuer: sslIssuer
     };
   } catch (err) {
     clearTimeout(timeoutId);
@@ -182,34 +242,27 @@ export function startMonitoringDaemon(io) {
             status: result.status,
             ping_ms: result.ping_ms,
             msg: result.msg,
+            created_at: new Date().toISOString(),
             ssl_days: result.ssl_days,
-            created_at: new Date().toISOString()
+            ssl_issuer: result.ssl_issuer
           };
 
-          // Emit Socket.IO event for real-time UI updates
-          if (io) {
-            io.emit('heartbeat', heartbeatPayload);
-          }
+          io.emit('heartbeat', heartbeatPayload);
 
-          // Trigger Alert Notifications on Status Change (UP -> DOWN, DOWN -> UP)
+          // Status Change Alert Triggers
           if (previousStatus !== null && previousStatus !== result.status) {
-            const statusLabel = result.status === 1 ? 'UP (Restored)' : result.status === 0 ? 'DOWN (Offline)' : 'DEGRADED';
-            const alertTitle = `[akMon] ${m.name} is ${statusLabel}`;
-            const alertMsg = `Service: ${m.name}\nType: ${m.type}\nStatus: ${statusLabel}\nTarget/URL: ${m.url || 'Agent Ingestion'}\nDetails: ${result.msg}`;
-
-            // Priority rules: default HTTP=1 (High), Servers=2 (Emergency)
-            const priority = m.pushover_priority !== undefined ? m.pushover_priority : (m.type === 'http' ? 1 : 2);
-
-            sendPushoverNotification({
-              title: alertTitle,
-              message: alertMsg,
-              priority
-            }).catch((err) => console.error('[Pushover Dispatch Error]', err.message));
-
-            sendEmailNotification({
-              title: alertTitle,
-              message: alertMsg
-            }).catch((err) => console.error('[Email Dispatch Error]', err.message));
+            const prio = m.pushover_priority !== undefined ? m.pushover_priority : 1;
+            if (result.status === 0) {
+              const title = `🚨 [DOWN] ${m.name} is OFFLINE!`;
+              const msg = `Service "${m.name}" (${m.url}) check failed.\nError: ${result.msg}\nTime: ${new Date().toLocaleString()}`;
+              sendPushoverNotification({ title, message: msg, priority: prio });
+              sendEmailNotification({ title, message: msg });
+            } else if (result.status === 1) {
+              const title = `✅ [RESTORED] ${m.name} is UP!`;
+              const msg = `Service "${m.name}" (${m.url}) has recovered.\nLatency: ${result.ping_ms}ms\nTime: ${new Date().toLocaleString()}`;
+              sendPushoverNotification({ title, message: msg, priority: prio });
+              sendEmailNotification({ title, message: msg });
+            }
           }
         }
       }
@@ -218,5 +271,5 @@ export function startMonitoringDaemon(io) {
     } finally {
       isScanning = false;
     }
-  }, 5000); // 5s ticker loop
+  }, 5000);
 }

@@ -675,6 +675,7 @@
 							<th class="py-3 px-4">Name / Target</th>
 							<th class="py-3 px-4">Group</th>
 							<th class="py-3 px-4">Type</th>
+							<th class="py-3 px-4">SSL Certificate</th>
 							<th class="py-3 px-4">Last Check / Ping</th>
 							<th class="py-3 px-4">Pushover Priority</th>
 							<th class="py-3 px-4">Latency</th>
@@ -741,6 +742,31 @@
 										<span class="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700/80 text-[10px] uppercase text-zinc-300">
 											{m.type}
 										</span>
+									</td>
+
+									<!-- SSL Certificate -->
+									<td class="py-3 px-4">
+										{#if m.url && m.url.startsWith('https://')}
+											{#if m.ssl_days !== null && m.ssl_days !== undefined}
+												{#if m.ssl_days > 14}
+													<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold" title="Issuer: {m.ssl_issuer || 'Verified'}">
+														🔒 {m.ssl_days}d left ({m.ssl_issuer || 'Valid'})
+													</span>
+												{:else if m.ssl_days > 0}
+													<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold animate-pulse" title="SSL Certificate Expiring Soon!">
+														⚠️ {m.ssl_days}d left ({m.ssl_issuer || 'Warning'})
+													</span>
+												{:else}
+													<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 text-[10px] font-bold" title="SSL Expired or Invalid">
+														🚨 EXPIRED ({m.ssl_days}d)
+													</span>
+												{/if}
+											{:else}
+												<span class="text-zinc-500 text-[10px]">Checking TLS...</span>
+											{/if}
+										{:else}
+											<span class="text-zinc-600 text-[10px]">HTTP / N/A</span>
+										{/if}
 									</td>
 
 									<!-- Last Check / Ping Time -->

@@ -196,6 +196,11 @@
 											{/if}
 										</div>
 										<div class="flex items-center gap-4 text-xs font-mono">
+											{#if m.ssl_days !== null && m.ssl_days !== undefined}
+												<span class="text-zinc-400">
+													SSL: <strong class="{m.ssl_days > 14 ? 'text-emerald-400' : 'text-amber-400'}">{m.ssl_days}d left</strong>
+												</span>
+											{/if}
 											<span class="text-zinc-400">
 												Last ping: <strong class="text-zinc-200">{m.status === 3 || m.in_maintenance ? 'Paused (Maintenance)' : formatRelativeTime(m.last_check)}</strong>
 											</span>

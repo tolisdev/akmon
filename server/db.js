@@ -75,6 +75,14 @@ try {
   if (!hasIsPublic) {
     db.exec("ALTER TABLE monitors ADD COLUMN is_public INTEGER DEFAULT 1;");
   }
+  const hasSslDays = columns.some((col) => col.name === 'ssl_days');
+  if (!hasSslDays) {
+    db.exec("ALTER TABLE monitors ADD COLUMN ssl_days INTEGER;");
+  }
+  const hasSslIssuer = columns.some((col) => col.name === 'ssl_issuer');
+  if (!hasSslIssuer) {
+    db.exec("ALTER TABLE monitors ADD COLUMN ssl_issuer TEXT;");
+  }
 } catch (e) {
   // Ignore migration errors
 }
@@ -113,6 +121,9 @@ const stmtToggleMaintenance = db.prepare(`
 `);
 const stmtToggleVisibility = db.prepare(`
   UPDATE monitors SET is_public = CASE WHEN is_public = 1 THEN 0 ELSE 1 END WHERE id = ?
+`);
+const stmtUpdateMonitorSsl = db.prepare(`
+  UPDATE monitors SET ssl_days = ?, ssl_issuer = ? WHERE id = ?
 `);
 const stmtDeleteMonitor = db.prepare('DELETE FROM monitors WHERE id = ?');
 
@@ -224,6 +235,10 @@ export function toggleMaintenance(id) {
 export function toggleVisibility(id) {
   stmtToggleVisibility.run(id);
   return getMonitorById(id);
+}
+
+export function updateMonitorSsl(id, sslDays, sslIssuer) {
+  stmtUpdateMonitorSsl.run(sslDays !== undefined ? sslDays : null, sslIssuer || null, id);
 }
 
 export function deleteMonitor(id) {

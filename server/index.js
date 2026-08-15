@@ -251,6 +251,8 @@ app.get('/api/v1/public/status', (req, res) => {
         last_check: latest ? latest.created_at : null,
         uptime_pct: stats.uptimePct,
         avg_ping: stats.avgPing,
+        ssl_days: m.ssl_days,
+        ssl_issuer: m.ssl_issuer,
         segments
       };
     });
