@@ -103,6 +103,9 @@ const stmtUpdateMonitor = db.prepare(`
 const stmtToggleMonitor = db.prepare(`
   UPDATE monitors SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END WHERE id = ?
 `);
+const stmtToggleMaintenance = db.prepare(`
+  UPDATE monitors SET active = CASE WHEN active = 2 THEN 1 ELSE 2 END WHERE id = ?
+`);
 const stmtDeleteMonitor = db.prepare('DELETE FROM monitors WHERE id = ?');
 
 // Prepared Statements for Heartbeats
@@ -199,6 +202,11 @@ export function updateMonitor(data) {
 
 export function toggleMonitor(id) {
   stmtToggleMonitor.run(id);
+  return getMonitorById(id);
+}
+
+export function toggleMaintenance(id) {
+  stmtToggleMaintenance.run(id);
   return getMonitorById(id);
 }
 

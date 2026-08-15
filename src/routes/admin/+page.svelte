@@ -437,6 +437,19 @@
 		}
 	}
 
+	async function toggleMaintenanceMode(m) {
+		activeMenuId = null;
+		try {
+			await fetch(`/api/v1/monitors/${m.id}/maintenance`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			loadMonitors();
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
 	async function clearHistory(m) {
 		activeMenuId = null;
 		if (!confirm(`Clear all heartbeat history for "${m.name}"? This will reset health bars and latency logs.`)) return;
@@ -667,7 +680,11 @@
 								<tr class="hover:bg-zinc-800/30 transition-colors">
 									<!-- Status Badge -->
 									<td class="py-3 px-4">
-										{#if m.active === 0}
+										{#if m.active === 2}
+											<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
+												🛠️ MAINTENANCE
+											</span>
+										{:else if m.active === 0}
 											<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px]">PAUSED</span>
 										{:else if m.latest_status === 1}
 											<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
@@ -797,6 +814,13 @@
 						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
 					>
 						<span>{activeMonitor.active === 1 ? '⏸️' : '▶️'}</span> {activeMonitor.active === 1 ? 'Pause Service' : 'Resume Service'}
+					</button>
+
+					<button
+						onclick={() => toggleMaintenanceMode(activeMonitor)}
+						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-amber-300 text-xs flex items-center gap-2 transition-colors font-mono"
+					>
+						<span>🛠️</span> {activeMonitor.active === 2 ? 'Exit Maintenance' : 'Set Maintenance'}
 					</button>
 
 					<button

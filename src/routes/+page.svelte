@@ -77,6 +77,8 @@
 		if (isDown) return { text: 'Some Systems Experiencing Outages', color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20' };
 		const isDegraded = monitors.some((m) => m.status === 2);
 		if (isDegraded) return { text: 'Degraded Performance Detected', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' };
+		const isMaintenance = monitors.some((m) => m.status === 3 || m.in_maintenance);
+		if (isMaintenance) return { text: 'Systems Operational (Scheduled Maintenance)', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' };
 		return { text: 'All Systems Operational', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' };
 	}
 </script>
@@ -185,15 +187,19 @@
 								<div class="p-4 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-zinc-700/80 transition-all space-y-3 w-full">
 									<div class="flex items-center justify-between">
 										<div class="flex items-center gap-3">
-											<span class="w-2.5 h-2.5 rounded-full {m.status === 1 ? 'bg-emerald-500' : m.status === 2 ? 'bg-amber-500' : 'bg-rose-500'}"></span>
+											<span class="w-2.5 h-2.5 rounded-full {m.status === 3 || m.in_maintenance ? 'bg-amber-400 animate-pulse' : m.status === 1 ? 'bg-emerald-500' : m.status === 2 ? 'bg-amber-500' : 'bg-rose-500'}"></span>
 											<span class="font-semibold text-sm text-white tracking-wide">{m.name}</span>
-											<span class="text-xs text-zinc-500 font-mono">({m.type})</span>
+											{#if m.status === 3 || m.in_maintenance}
+												<span class="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold font-mono">🛠️ MAINTENANCE</span>
+											{:else}
+												<span class="text-xs text-zinc-500 font-mono">({m.type})</span>
+											{/if}
 										</div>
 										<div class="flex items-center gap-4 text-xs font-mono">
 											<span class="text-zinc-400">
-												Last ping: <strong class="text-zinc-200">{formatRelativeTime(m.last_check)}</strong>
+												Last ping: <strong class="text-zinc-200">{m.status === 3 || m.in_maintenance ? 'Paused (Maintenance)' : formatRelativeTime(m.last_check)}</strong>
 											</span>
-											{#if m.ping_ms > 0}
+											{#if m.ping_ms > 0 && m.status !== 3 && !m.in_maintenance}
 												<span class="text-zinc-400">Latency: <strong class="text-zinc-200">{m.ping_ms}ms</strong></span>
 											{/if}
 											<span class="font-bold {m.uptime_pct >= 99 ? 'text-emerald-400' : m.uptime_pct >= 95 ? 'text-amber-400' : 'text-rose-400'}">
@@ -207,13 +213,13 @@
 										<div class="flex gap-1 h-7 w-full">
 											{#each m.segments || [] as seg, i}
 												<div
-													class="flex-1 rounded-sm transition-all hover:scale-110 relative group min-w-0 {seg.status === 1 ? 'bg-emerald-500' : seg.status === 0 ? 'bg-rose-500' : seg.status === 2 ? 'bg-amber-500' : 'bg-zinc-800'}"
+													class="flex-1 rounded-sm transition-all hover:scale-110 relative group min-w-0 {seg.status === 3 ? 'bg-amber-400/80' : seg.status === 1 ? 'bg-emerald-500' : seg.status === 0 ? 'bg-rose-500' : seg.status === 2 ? 'bg-amber-500' : 'bg-zinc-800'}"
 												>
 													<!-- Tooltip -->
 													<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-20 pointer-events-none">
 														<div class="bg-[#09090b] border border-zinc-700 text-white text-[10px] font-mono px-2 py-1 rounded shadow-xl whitespace-nowrap">
 															<div>{seg.time ? new Date(seg.time).toLocaleTimeString() : 'No Check'}</div>
-															<div class="text-zinc-400">{seg.status === 1 ? `UP (${seg.ping_ms}ms)` : seg.status === 0 ? 'DOWN' : 'No Data'}</div>
+															<div class="text-zinc-400">{seg.status === 3 ? '🛠️ MAINTENANCE' : seg.status === 1 ? `UP (${seg.ping_ms}ms)` : seg.status === 0 ? 'DOWN' : 'No Data'}</div>
 														</div>
 													</div>
 												</div>

@@ -13,6 +13,7 @@ import {
   updateMonitor,
   deleteMonitor,
   toggleMonitor,
+  toggleMaintenance,
   getRecentHeartbeats,
   getLatestHeartbeat,
   getMonitorStats,
@@ -213,8 +214,9 @@ app.post('/api/v1/notifications/test', checkAdminAuth, async (req, res) => {
 // Public Status API (Sanitized & Grouped - 60 segment chronological order)
 app.get('/api/v1/public/status', (req, res) => {
   try {
-    const monitors = getAllMonitors().filter((m) => m.active === 1);
+    const monitors = getAllMonitors().filter((m) => m.active === 1 || m.active === 2);
     const publicData = monitors.map((m) => {
+      const isMaintenance = m.active === 2;
       const latest = getLatestHeartbeat(m.id);
       const recent = getRecentHeartbeats(m.id, 60); // returns oldest first (chronological)
       const stats = getMonitorStats(m.id);
@@ -242,8 +244,9 @@ app.get('/api/v1/public/status', (req, res) => {
         name: m.name,
         type: m.type,
         group_name: m.group_name || 'Default',
-        status: latest ? latest.status : 1,
-        ping_ms: latest ? latest.ping_ms : 0,
+        status: isMaintenance ? 3 : (latest ? latest.status : 1),
+        in_maintenance: isMaintenance,
+        ping_ms: isMaintenance ? 0 : (latest ? latest.ping_ms : 0),
         last_check: latest ? latest.created_at : null,
         uptime_pct: stats.uptimePct,
         avg_ping: stats.avgPing,
@@ -349,6 +352,15 @@ app.put('/api/v1/monitors/:id', checkAdminAuth, (req, res) => {
 app.post('/api/v1/monitors/:id/toggle', checkAdminAuth, (req, res) => {
   try {
     const updated = toggleMonitor(req.params.id);
+    res.json({ monitor: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/monitors/:id/maintenance', checkAdminAuth, (req, res) => {
+  try {
+    const updated = toggleMaintenance(req.params.id);
     res.json({ monitor: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
