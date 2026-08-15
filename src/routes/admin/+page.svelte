@@ -16,6 +16,9 @@
 	let showAgentModal = $state(false);
 	let selectedAgentMonitor = $state(null);
 
+	// Action Menu State
+	let activeMenuId = $state(null);
+
 	// Settings State
 	let showSettingsModal = $state(false);
 	let settingsLoading = $state(false);
@@ -72,6 +75,15 @@
 		if (!dateStr) return '';
 		const d = new Date(dateStr);
 		return isNaN(d.getTime()) ? '' : d.toLocaleTimeString();
+	}
+
+	function toggleRowMenu(id, e) {
+		e?.stopPropagation();
+		activeMenuId = activeMenuId === id ? null : id;
+	}
+
+	function closeAllMenus() {
+		activeMenuId = null;
 	}
 
 	// Automatically adjust default group and priority when type changes
@@ -282,8 +294,11 @@
 			}
 		});
 
+		window.addEventListener('click', closeAllMenus);
+
 		return () => {
 			socketInstance.disconnect();
+			window.removeEventListener('click', closeAllMenus);
 		};
 	});
 
@@ -310,6 +325,7 @@
 		formInterval = m.interval_sec || 60;
 		formPushoverPriority = m.pushover_priority !== undefined ? m.pushover_priority : (m.type === 'http' ? 1 : 2);
 		formError = '';
+		activeMenuId = null;
 		showModal = true;
 	}
 
@@ -356,6 +372,7 @@
 	}
 
 	async function toggleActive(m) {
+		activeMenuId = null;
 		try {
 			await fetch(`/api/v1/monitors/${m.id}/toggle`, {
 				method: 'POST',
@@ -368,6 +385,7 @@
 	}
 
 	async function clearHistory(m) {
+		activeMenuId = null;
 		if (!confirm(`Clear all heartbeat history for "${m.name}"? This will reset health bars and latency logs.`)) return;
 		try {
 			await fetch(`/api/v1/monitors/${m.id}/history`, {
@@ -381,6 +399,7 @@
 	}
 
 	async function deleteMon(m) {
+		activeMenuId = null;
 		if (!confirm(`Delete monitor "${m.name}"?`)) return;
 		try {
 			await fetch(`/api/v1/monitors/${m.id}`, {
@@ -394,6 +413,7 @@
 	}
 
 	function openAgentInstall(m) {
+		activeMenuId = null;
 		selectedAgentMonitor = m;
 		showAgentModal = true;
 	}
@@ -534,13 +554,13 @@
 		</div>
 
 		<!-- High Density Monitors Table -->
-		<div class="rounded-xl bg-[#18181b] border border-[#27272a] overflow-hidden shadow-sm">
+		<div class="rounded-xl bg-[#18181b] border border-[#27272a] overflow-visible shadow-sm">
 			<div class="px-5 py-4 border-b border-[#27272a] flex items-center justify-between">
 				<h2 class="text-sm font-semibold text-white tracking-wide">Monitors & Services</h2>
 				<span class="text-xs font-mono text-zinc-400">{monitors.length} Active Services</span>
 			</div>
 
-			<div class="overflow-x-auto">
+			<div class="overflow-x-auto overflow-y-visible">
 				<table class="w-full text-left border-collapse">
 					<thead>
 						<tr class="bg-[#09090b]/50 border-b border-[#27272a] text-[11px] font-mono text-zinc-400 uppercase">
@@ -660,48 +680,58 @@
 										{m.uptime_pct}%
 									</td>
 
-									<!-- Actions -->
-									<td class="py-3 px-4 text-right">
-										<div class="flex items-center justify-end gap-1.5">
-											{#if m.type === 'agent_linux' || m.type === 'agent_php'}
+									<!-- Actions Dropdown (Hamburger Menu) -->
+									<td class="py-3 px-4 text-right relative">
+										<button
+											onclick={(e) => toggleRowMenu(m.id, e)}
+											class="w-8 h-8 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-300 hover:text-white flex items-center justify-center transition-colors ml-auto text-base"
+											title="Actions menu"
+										>
+											⋮
+										</button>
+
+										{#if activeMenuId === m.id}
+											<div
+												class="absolute right-4 top-12 w-44 bg-[#09090b] border border-[#27272a] rounded-lg shadow-2xl z-40 overflow-hidden py-1 text-left"
+											>
+												{#if m.type === 'agent_linux' || m.type === 'agent_php'}
+													<button
+														onclick={() => openAgentInstall(m)}
+														class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
+													>
+														<span>🔑</span> Setup Token
+													</button>
+												{/if}
+
 												<button
-													onclick={() => openAgentInstall(m)}
-													class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-[10px] transition-colors"
-													title="Get Agent Setup Code"
+													onclick={() => toggleActive(m)}
+													class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
 												>
-													🔑 Token
+													<span>{m.active === 1 ? '⏸️' : '▶️'}</span> {m.active === 1 ? 'Pause Service' : 'Resume Service'}
 												</button>
-											{/if}
 
-											<button
-												onclick={() => toggleActive(m)}
-												class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] transition-colors"
-											>
-												{m.active === 1 ? 'Pause' : 'Resume'}
-											</button>
+												<button
+													onclick={() => openEditModal(m)}
+													class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
+												>
+													<span>✏️</span> Edit Monitor
+												</button>
 
-											<button
-												onclick={() => openEditModal(m)}
-												class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] transition-colors"
-											>
-												Edit
-											</button>
+												<button
+													onclick={() => clearHistory(m)}
+													class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-amber-300 text-xs flex items-center gap-2 transition-colors font-mono border-t border-zinc-800/80"
+												>
+													<span>🧹</span> Clear History
+												</button>
 
-											<button
-												onclick={() => clearHistory(m)}
-												class="px-2 py-1 bg-amber-950/80 hover:bg-amber-900 border border-amber-800/40 text-amber-300 rounded text-[10px] transition-colors"
-												title="Clear all heartbeat history for this monitor"
-											>
-												Clear History
-											</button>
-
-											<button
-												onclick={() => deleteMon(m)}
-												class="px-2 py-1 bg-rose-950 hover:bg-rose-900 border border-rose-800/40 text-rose-300 rounded text-[10px] transition-colors"
-											>
-												Delete
-											</button>
-										</div>
+												<button
+													onclick={() => deleteMon(m)}
+													class="w-full px-3 py-2 text-left hover:bg-rose-950/80 text-rose-400 text-xs flex items-center gap-2 transition-colors font-mono border-t border-zinc-800/80"
+												>
+													<span>🗑️</span> Delete Service
+												</button>
+											</div>
+										{/if}
 									</td>
 								</tr>
 							{/each}
