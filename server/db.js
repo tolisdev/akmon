@@ -50,8 +50,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    value TEXT NOT NULL
   );
 `);
 
@@ -110,12 +109,21 @@ const stmtPruneOldHeartbeats = db.prepare(`
   DELETE FROM heartbeats WHERE created_at < datetime('now', '-90 days')
 `);
 
+const stmtStats = db.prepare(`
+  SELECT
+    COUNT(*) as total,
+    SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as up_count,
+    AVG(CASE WHEN ping_ms > 0 THEN ping_ms ELSE NULL END) as avg_ping
+  FROM heartbeats
+  WHERE monitor_id = ?
+`);
+
 // Prepared Statements for Settings
 const stmtGetSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
 const stmtGetAllSettings = db.prepare('SELECT key, value FROM settings');
 const stmtSetSetting = db.prepare(`
-  INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  INSERT INTO settings (key, value) VALUES (?, ?)
+  ON CONFLICT(key) DO UPDATE SET value = excluded.value
 `);
 
 // Exported Database Functions
@@ -190,6 +198,16 @@ export function getLatestHeartbeat(monitorId) {
 
 export function deleteHeartbeatsForMonitor(monitorId) {
   return stmtDeleteHeartbeatsByMonitor.run(monitorId);
+}
+
+export function getMonitorStats(monitorId) {
+  const row = stmtStats.get(monitorId);
+  const total = row ? row.total : 0;
+  const upCount = row ? row.up_count : 0;
+  const uptimePct = total > 0 ? Number(Math.round((upCount / total) * 100 + 'e1') + 'e-1') : 100;
+  const avgPing = row && row.avg_ping ? Math.round(row.avg_ping) : 0;
+
+  return { uptimePct, avgPing };
 }
 
 export function cleanupOldHeartbeats() {
