@@ -337,10 +337,59 @@
 					});
 				}
 			}
+			await fetchShareToken();
 		} catch (e) {
 			settingsError = 'Failed to load system settings';
 		} finally {
 			settingsLoading = false;
+		}
+	}
+
+	// Secret Share Access Token State
+	let shareToken = $state('');
+	let shareTokenCopied = $state(false);
+
+	async function fetchShareToken() {
+		try {
+			const res = await fetch('/api/v1/settings/share-token', {
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			if (res.ok) {
+				const data = await res.json();
+				shareToken = data.token || '';
+			}
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	async function regenerateShareToken() {
+		if (!confirm('Are you sure you want to generate a new 64-character secret share token? Existing secret links will no longer work.')) return;
+		try {
+			const res = await fetch('/api/v1/settings/share-token/regenerate', {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			if (res.ok) {
+				const data = await res.json();
+				shareToken = data.token || '';
+			}
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	function getPrivateShareUrl() {
+		const origin = typeof window !== 'undefined' ? window.location.origin : 'http://your-vps-ip:3000';
+		return `${origin}/?token=${shareToken}`;
+	}
+
+	function copyShareLink() {
+		const url = getPrivateShareUrl();
+		if (navigator.clipboard) {
+			navigator.clipboard.writeText(url);
+			shareTokenCopied = true;
+			setTimeout(() => (shareTokenCopied = false), 2500);
 		}
 	}
 
@@ -986,6 +1035,16 @@
 					</button>
 
 					<button
+						onclick={() => {
+							copyShareLink();
+							activeMenuId = null;
+						}}
+						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-emerald-400 text-xs flex items-center gap-2 transition-colors font-mono"
+					>
+						<span>🔗</span> Copy Secret Link
+					</button>
+
+					<button
 						onclick={() => openEditModal(activeMonitor)}
 						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
 					>
@@ -1448,6 +1507,51 @@
 							<label for="set-oidc-secret" class="block text-zinc-400 mb-1">CLIENT SECRET</label>
 							<input id="set-oidc-secret" type="password" bind:value={settingsForm.oidc_client_secret} placeholder="••••••••" class="w-full px-3 py-2 bg-[#18181b] border border-zinc-700 rounded text-white focus:outline-none" />
 						</div>
+					</div>
+				</section>
+
+				<!-- Section 5: Secret Private Status Access Link -->
+				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
+					<div class="flex items-center justify-between">
+						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide flex items-center gap-1.5">
+							<span>🔗</span> Private Monitors Secret Access Link
+						</h4>
+						<span class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 text-[10px] font-mono font-bold border border-emerald-500/30">
+							64-Char Token Active
+						</span>
+					</div>
+					<p class="text-[11px] text-zinc-400">
+						Share this secret link with trusted clients or team members. Anyone with this link can view both public AND private monitors without logging in.
+					</p>
+
+					<div>
+						<label for="share-access-link" class="block text-zinc-400 text-[10px] mb-1 font-mono">SECRET ACCESS URL (INCLUDES TOKEN)</label>
+						<div class="flex items-center gap-2">
+							<input
+								id="share-access-link"
+								type="text"
+								readonly
+								value={getPrivateShareUrl()}
+								class="w-full px-3 py-2 bg-[#18181b] border border-zinc-700 rounded text-emerald-400 font-mono text-xs select-all focus:outline-none"
+							/>
+							<button
+								type="button"
+								onclick={copyShareLink}
+								class="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-black font-bold rounded text-xs whitespace-nowrap flex-shrink-0 transition-colors"
+							>
+								{shareTokenCopied ? '✅ Copied!' : '📋 Copy Link'}
+							</button>
+						</div>
+					</div>
+
+					<div class="flex justify-end pt-1">
+						<button
+							type="button"
+							onclick={regenerateShareToken}
+							class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+						>
+							<span>🔄</span> Regenerate 64-Char Token
+						</button>
 					</div>
 				</section>
 			</div>

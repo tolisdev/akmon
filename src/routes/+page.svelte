@@ -50,9 +50,12 @@
 		return `${Math.floor(diffSec / 86400)}d ago`;
 	}
 
+	let shareToken = $state('');
+
 	async function fetchStatus() {
 		try {
-			const res = await fetch('/api/v1/public/status');
+			const url = shareToken ? `/api/v1/public/status?token=${encodeURIComponent(shareToken)}` : '/api/v1/public/status';
+			const res = await fetch(url);
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data = await res.json();
 			statusData = data;
@@ -65,6 +68,10 @@
 	}
 
 	onMount(() => {
+		if (typeof window !== 'undefined') {
+			const params = new URLSearchParams(window.location.search);
+			shareToken = params.get('token') || '';
+		}
 		fetchStatus();
 		const interval = setInterval(fetchStatus, 10000);
 		return () => clearInterval(interval);
@@ -117,7 +124,14 @@
 					<p class="text-xs text-zinc-400 font-mono">Uptime & Performance Monitoring</p>
 				</div>
 			</div>
-			<a href="/admin" class="text-xs text-zinc-400 hover:text-white font-mono underline">Admin Login →</a>
+			<div class="flex items-center gap-3">
+				{#if shareToken}
+					<span class="px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 shadow-lg" title="Viewing private monitors via secret share token">
+						🔒 Private Access Enabled
+					</span>
+				{/if}
+				<a href="/admin" class="text-xs text-zinc-400 hover:text-white font-mono underline">Admin Login →</a>
+			</div>
 		</div>
 
 		{#if !loading && !error}

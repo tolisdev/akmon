@@ -22,7 +22,9 @@ import {
   getAllSettings,
   setSettings,
   getSetting,
-  deleteHeartbeatsForMonitor
+  deleteHeartbeatsForMonitor,
+  getStatusAccessToken,
+  regenerateStatusAccessToken
 } from './db.js';
 
 import { startMonitoringDaemon } from './monitors.js';
@@ -232,10 +234,37 @@ app.post('/api/v1/notifications/test', checkAdminAuth, async (req, res) => {
   return res.status(400).json({ error: 'Invalid notification type' });
 });
 
+// Secret Share Token Endpoints for Private Monitors
+app.get('/api/v1/settings/share-token', checkAdminAuth, (req, res) => {
+  try {
+    const token = getStatusAccessToken();
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch share token' });
+  }
+});
+
+app.post('/api/v1/settings/share-token/regenerate', checkAdminAuth, (req, res) => {
+  try {
+    const token = regenerateStatusAccessToken();
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to regenerate share token' });
+  }
+});
+
 // Public Status API (Sanitized & Grouped - 60 segment chronological order)
 app.get('/api/v1/public/status', (req, res) => {
   try {
-    const monitors = getAllMonitors().filter((m) => (m.active === 1 || m.active === 2) && m.is_public !== 0);
+    const requestToken = req.query.token || '';
+    const statusAccessToken = getStatusAccessToken();
+    const isSecretTokenValid = timingSafeEqualStr(requestToken, statusAccessToken);
+
+    const monitors = getAllMonitors().filter((m) => {
+      if (m.active !== 1 && m.active !== 2) return false;
+      if (isSecretTokenValid) return true; // Secret token unlocks private monitors!
+      return m.is_public !== 0;
+    });
     const publicData = monitors.map((m) => {
       const isMaintenance = m.active === 2;
       const latest = getLatestHeartbeat(m.id);

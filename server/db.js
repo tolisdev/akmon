@@ -303,3 +303,18 @@ export function setSettings(settingsObj) {
     stmtSetSetting.run(key, String(value));
   }
 }
+
+export function getStatusAccessToken() {
+  let token = getSetting('status_access_token');
+  if (!token) {
+    token = crypto.randomBytes(32).toString('hex');
+    setSettings({ status_access_token: token });
+  }
+  return token;
+}
+
+export function regenerateStatusAccessToken() {
+  const newToken = crypto.randomBytes(32).toString('hex');
+  setSettings({ status_access_token: newToken });
+  return newToken;
+}
