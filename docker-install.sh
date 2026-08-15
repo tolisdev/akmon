@@ -1,6 +1,6 @@
 #!/bin/bash
 # 🚀 akMon Automated Docker + Cloudflare Tunnel Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/Akeryn-Studio/akMon/main/docker-install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/tolisdev/akmon/main/docker-install.sh | bash
 
 set -e
 
@@ -27,7 +27,7 @@ fi
 INSTALL_DIR="/opt/akmon"
 if [ ! -d "$INSTALL_DIR" ]; then
     echo "[3/4] Cloning akMon repository to $INSTALL_DIR..."
-    sudo git clone https://github.com/Akeryn-Studio/akMon.git "$INSTALL_DIR"
+    sudo git clone https://github.com/tolisdev/akmon.git "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 else
     echo "[3/4] Repository exists at $INSTALL_DIR. Pulling latest code..."

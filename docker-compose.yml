@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   akmon:
-    image: ghcr.io/akeryn-studio/akmon:latest
+    image: ghcr.io/tolisdev/akmon:latest
     build:
       context: .
       dockerfile: Dockerfile
