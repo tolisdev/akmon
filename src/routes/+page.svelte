@@ -1,6 +1,5 @@
 <script>
 	import { onMount } from 'svelte';
-	import io from 'socket.io-client';
 
 	let statusData = $state({ monitors: [] });
 	let loading = $state(true);
@@ -45,6 +44,7 @@
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data = await res.json();
 			statusData = data;
+			error = null;
 		} catch (err) {
 			error = err.message || 'Failed to load status data';
 		} finally {
@@ -54,36 +54,8 @@
 
 	onMount(() => {
 		fetchStatus();
-
-		const socketUrl = window.location.origin;
-		const socket = io(socketUrl, {
-			transports: ['websocket', 'polling'],
-			reconnection: true
-		});
-
-		socket.on('heartbeat', (hb) => {
-			if (!statusData.monitors) return;
-			const idx = statusData.monitors.findIndex((m) => m.id === hb.monitor_id);
-			if (idx !== -1) {
-				const m = statusData.monitors[idx];
-				m.status = hb.status;
-				m.ping_ms = hb.ping_ms;
-				m.last_check = hb.created_at;
-
-				const segs = [...(m.segments || [])];
-				segs.shift(); // Remove oldest on the left
-				segs.push({
-					status: hb.status,
-					ping_ms: hb.ping_ms,
-					time: hb.created_at
-				});
-				m.segments = segs;
-			}
-		});
-
-		return () => {
-			socket.disconnect();
-		};
+		const interval = setInterval(fetchStatus, 10000);
+		return () => clearInterval(interval);
 	});
 
 	function getOverallStatusText() {
@@ -97,7 +69,7 @@
 	}
 </script>
 
-<div class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+<div class="w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
 	<!-- Hero / Status Banner -->
 	<header class="space-y-4">
 		<div class="flex items-center justify-between">
@@ -107,7 +79,7 @@
 				</div>
 				<div>
 					<h1 class="text-xl font-bold text-white tracking-wide">Infrastructure Status</h1>
-					<p class="text-xs text-zinc-400 font-mono">Real-time Uptime & Performance Monitoring</p>
+					<p class="text-xs text-zinc-400 font-mono">Uptime & Performance Monitoring</p>
 				</div>
 			</div>
 			<a href="/admin" class="text-xs text-zinc-400 hover:text-white font-mono underline">Admin Login →</a>
@@ -123,7 +95,7 @@
 					</span>
 					<span class="font-semibold text-sm tracking-wide {overall.color}">{overall.text}</span>
 				</div>
-				<span class="text-xs text-zinc-500 font-mono">Live Socket.IO Sync</span>
+				<span class="text-xs text-zinc-500 font-mono">Auto Refreshing (10s)</span>
 			</div>
 		{/if}
 	</header>
@@ -132,7 +104,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-zinc-500 font-mono">
 			<div class="inline-block animate-spin w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full mb-2"></div>
-			<p>Connecting to telemetry daemon...</p>
+			<p>Loading status data...</p>
 		</div>
 	{:else if error}
 		<div class="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-mono">
@@ -177,7 +149,7 @@
 
 						<div class="space-y-3">
 							{#each groupMonitors as m (m.id)}
-								<div class="p-4 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-zinc-700/80 transition-all space-y-3">
+								<div class="p-4 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-zinc-700/80 transition-all space-y-3 w-full">
 									<div class="flex items-center justify-between">
 										<div class="flex items-center gap-3">
 											<span class="w-2.5 h-2.5 rounded-full {m.status === 1 ? 'bg-emerald-500' : m.status === 2 ? 'bg-amber-500' : 'bg-rose-500'}"></span>
@@ -197,12 +169,12 @@
 										</div>
 									</div>
 
-									<!-- 60 Segment Health Bar Grid (repeat 60 columns CSS) -->
-									<div class="space-y-1.5">
-										<div class="grid gap-1 h-7 w-full" style="grid-template-columns: repeat(60, minmax(0, 1fr));">
+									<!-- 60 Segment Health Bar (Full Width Flexbox) -->
+									<div class="space-y-1.5 w-full">
+										<div class="flex gap-1 h-7 w-full">
 											{#each m.segments || [] as seg, i}
 												<div
-													class="rounded-sm transition-all hover:scale-110 relative group {seg.status === 1 ? 'bg-emerald-500' : seg.status === 0 ? 'bg-rose-500' : seg.status === 2 ? 'bg-amber-500' : 'bg-zinc-800'}"
+													class="flex-1 rounded-sm transition-all hover:scale-110 relative group min-w-0 {seg.status === 1 ? 'bg-emerald-500' : seg.status === 0 ? 'bg-rose-500' : seg.status === 2 ? 'bg-amber-500' : 'bg-zinc-800'}"
 												>
 													<!-- Tooltip -->
 													<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-20 pointer-events-none">
