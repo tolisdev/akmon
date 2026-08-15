@@ -218,7 +218,7 @@
 				const data = await res.json();
 				if (data.settings) {
 					const s = data.settings;
-					settingsForm = {
+					Object.assign(settingsForm, {
 						password_auth_enabled: s.password_auth_enabled !== 'false',
 						pushover_enabled: s.pushover_enabled !== 'false',
 						smtp_enabled: s.smtp_enabled === 'true',
@@ -237,7 +237,7 @@
 						oidc_client_id: s.oidc_client_id || '',
 						oidc_client_secret: s.oidc_client_secret || '',
 						oidc_redirect_uri: s.oidc_redirect_uri || ''
-					};
+					});
 				}
 			}
 		} catch (e) {
