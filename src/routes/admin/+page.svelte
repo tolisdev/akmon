@@ -57,14 +57,25 @@
 	let formPushoverPriority = $state(1);
 	let formError = $state('');
 
+	function parseDate(dateStr) {
+		if (!dateStr) return null;
+		let str = String(dateStr).trim();
+		if (!str.endsWith('Z') && !str.includes('+') && !str.includes('GMT')) {
+			str = str.replace(' ', 'T') + 'Z';
+		}
+		const d = new Date(str);
+		return isNaN(d.getTime()) ? new Date(dateStr) : d;
+	}
+
 	// Helper for Relative Time
 	function formatRelativeTime(dateStr) {
 		if (!dateStr) return 'Never';
-		const date = new Date(dateStr);
+		const date = parseDate(dateStr);
+		if (!date) return '—';
 		const now = new Date();
 		const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-		if (isNaN(diffSec)) return '—';
+		if (isNaN(diffSec) || diffSec < 0) return 'Just now';
 		if (diffSec < 5) return 'Just now';
 		if (diffSec < 60) return `${diffSec}s ago`;
 		if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
@@ -74,8 +85,8 @@
 
 	function formatExactTime(dateStr) {
 		if (!dateStr) return '';
-		const d = new Date(dateStr);
-		return isNaN(d.getTime()) ? '' : d.toLocaleTimeString();
+		const d = parseDate(dateStr);
+		return !d || isNaN(d.getTime()) ? '' : d.toLocaleTimeString();
 	}
 
 	function toggleRowMenu(id, e) {

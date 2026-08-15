@@ -20,7 +20,7 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA synchronous = NORMAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
-// Initialize Tables
+// Initialize Tables with explicit ISO 8601 UTC timestamp format
 db.exec(`
   CREATE TABLE IF NOT EXISTS monitors (
     id TEXT PRIMARY KEY,
@@ -33,7 +33,7 @@ db.exec(`
     token TEXT UNIQUE,
     active INTEGER DEFAULT 1,
     pushover_priority INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   );
 
   CREATE TABLE IF NOT EXISTS heartbeats (
@@ -42,7 +42,7 @@ db.exec(`
     status INTEGER NOT NULL, -- 1: UP, 0: DOWN, 2: DEGRADED
     ping_ms INTEGER DEFAULT 0,
     msg TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     FOREIGN KEY(monitor_id) REFERENCES monitors(id) ON DELETE CASCADE
   );
 
@@ -71,13 +71,26 @@ try {
   // Ignore migration errors
 }
 
+// Helper to format any SQLite timestamp as clean ISO 8601 UTC string
+export function formatUtcIso(dateStr) {
+  if (!dateStr) return null;
+  let str = String(dateStr).trim();
+  if (str.endsWith('Z') || str.includes('+')) {
+    return new Date(str).toISOString();
+  }
+  // Convert SQLite "YYYY-MM-DD HH:MM:SS" to ISO UTC "YYYY-MM-DDTHH:MM:SS.000Z"
+  str = str.replace(' ', 'T') + 'Z';
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date(dateStr).toISOString() : d.toISOString();
+}
+
 // Prepared Statements for Monitors
 const stmtGetAllMonitors = db.prepare('SELECT * FROM monitors ORDER BY name ASC');
 const stmtGetMonitorById = db.prepare('SELECT * FROM monitors WHERE id = ?');
 const stmtGetMonitorByToken = db.prepare('SELECT * FROM monitors WHERE token = ?');
 const stmtInsertMonitor = db.prepare(`
-  INSERT INTO monitors (id, name, type, group_name, url, keyword, interval_sec, token, active, pushover_priority)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO monitors (id, name, type, group_name, url, keyword, interval_sec, token, active, pushover_priority, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 `);
 const stmtUpdateMonitor = db.prepare(`
   UPDATE monitors
@@ -91,8 +104,8 @@ const stmtDeleteMonitor = db.prepare('DELETE FROM monitors WHERE id = ?');
 
 // Prepared Statements for Heartbeats
 const stmtInsertHeartbeat = db.prepare(`
-  INSERT INTO heartbeats (monitor_id, status, ping_ms, msg)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO heartbeats (monitor_id, status, ping_ms, msg, created_at)
+  VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 `);
 const stmtGetRecentHeartbeats = db.prepare(`
   SELECT id, monitor_id, status, ping_ms, msg, created_at
@@ -134,15 +147,20 @@ const stmtSetSetting = db.prepare(`
 
 // Exported Database Functions
 export function getAllMonitors() {
-  return stmtGetAllMonitors.all();
+  return stmtGetAllMonitors.all().map((m) => ({
+    ...m,
+    created_at: formatUtcIso(m.created_at)
+  }));
 }
 
 export function getMonitorById(id) {
-  return stmtGetMonitorById.get(id);
+  const m = stmtGetMonitorById.get(id);
+  return m ? { ...m, created_at: formatUtcIso(m.created_at) } : null;
 }
 
 export function getMonitorByToken(token) {
-  return stmtGetMonitorByToken.get(token);
+  const m = stmtGetMonitorByToken.get(token);
+  return m ? { ...m, created_at: formatUtcIso(m.created_at) } : null;
 }
 
 export function createMonitor(data) {
@@ -195,11 +213,16 @@ export function insertHeartbeat(data) {
 }
 
 export function getRecentHeartbeats(monitorId, limit = 60) {
-  return stmtGetRecentHeartbeats.all(monitorId, limit).reverse();
+  const rows = stmtGetRecentHeartbeats.all(monitorId, limit).reverse();
+  return rows.map((r) => ({
+    ...r,
+    created_at: formatUtcIso(r.created_at)
+  }));
 }
 
 export function getLatestHeartbeat(monitorId) {
-  return stmtGetLatestHeartbeat.get(monitorId);
+  const hb = stmtGetLatestHeartbeat.get(monitorId);
+  return hb ? { ...hb, created_at: formatUtcIso(hb.created_at) } : null;
 }
 
 export function deleteHeartbeatsForMonitor(monitorId) {
