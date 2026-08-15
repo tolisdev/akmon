@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   akmon:
+    image: ghcr.io/akeryn-studio/akmon:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -32,4 +33,4 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 86400 --cleanup akmon
+    command: --interval 300 --cleanup akmon
