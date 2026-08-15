@@ -49,9 +49,27 @@ const io = new Server(httpServer, {
 // Attach Socket.IO instance to app for routes
 app.set('io', io);
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middleware & Security Headers
+app.disable('x-powered-by');
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Helper: Constant-time string/buffer comparison
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 // Serve Agent Scripts
 app.get('/agents/agent.sh', (req, res) => {
@@ -77,7 +95,7 @@ app.get('/agents/agent.php', (req, res) => {
 // Ingest API
 app.use('/api/v1', agentRouter);
 
-// Public// Authentication options endpoint for frontend (login page options)
+// Public Authentication options endpoint for frontend (login page options)
 app.get('/api/v1/auth/options', (req, res) => {
   try {
     const passwordAuthEnabled = getSetting('password_auth_enabled', 'true') === 'true';
@@ -89,7 +107,7 @@ app.get('/api/v1/auth/options', (req, res) => {
       logo_url: logoUrl
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to fetch auth options' });
   }
 });
 
@@ -100,8 +118,8 @@ app.post('/api/v1/auth/login', (req, res) => {
     return res.status(403).json({ ok: false, error: 'Password authentication is disabled by the administrator. Log in with PocketID.' });
   }
 
-  const { password } = req.body;
-  if (password === ADMIN_PASSWORD) {
+  const { password } = req.body || {};
+  if (timingSafeEqualStr(password, ADMIN_PASSWORD)) {
     const sessionToken = crypto.createHash('sha256').update(ADMIN_PASSWORD + '_akmon_salt').digest('hex');
     return res.json({ ok: true, token: sessionToken });
   }
@@ -130,7 +148,7 @@ app.get('/api/v1/auth/oidc/login', async (req, res) => {
     }
     return res.redirect(result.url);
   } catch (err) {
-    return res.status(500).send('OIDC Error: ' + err.message);
+    return res.status(500).send('OIDC Error');
   }
 });
 
@@ -163,15 +181,17 @@ app.get('/api/v1/auth/oidc/callback', async (req, res) => {
     `);
   } catch (err) {
     console.error('[OIDC Callback Error]', err);
-    return res.status(500).send('OIDC Login Failed: ' + err.message);
+    return res.status(500).send('OIDC Login Failed');
   }
 });
 
-// Simple Auth Middleware for Admin APIs
+// Simple Auth Middleware for Admin APIs with Timing-Safe Token Check
 function checkAdminAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
+  const authHeader = req.headers.authorization || '';
   const expectedToken = crypto.createHash('sha256').update(ADMIN_PASSWORD + '_akmon_salt').digest('hex');
-  if (authHeader === `Bearer ${expectedToken}`) {
+  const expectedHeader = `Bearer ${expectedToken}`;
+
+  if (timingSafeEqualStr(authHeader, expectedHeader)) {
     return next();
   }
   return res.status(401).json({ error: 'Unauthorized' });
@@ -300,11 +320,49 @@ app.get('/api/v1/monitors', checkAdminAuth, (req, res) => {
   }
 });
 
+const VALID_MONITOR_TYPES = ['http', 'ping', 'agent_linux', 'agent_php'];
+
+function validateMonitorInput({ name, type, url, interval_sec }) {
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return 'Name is required';
+  }
+  if (name.length > 100) {
+    return 'Name must not exceed 100 characters';
+  }
+  if (!type || !VALID_MONITOR_TYPES.includes(type)) {
+    return `Invalid monitor type. Allowed: ${VALID_MONITOR_TYPES.join(', ')}`;
+  }
+  if (type === 'http' || type === 'ping') {
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return 'URL or hostname is required for HTTP/Ping monitors';
+    }
+    if (type === 'http') {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return 'HTTP monitor URL must start with http:// or https://';
+        }
+      } catch (e) {
+        return 'Invalid HTTP URL format';
+      }
+    }
+  }
+  if (interval_sec !== undefined && interval_sec !== null) {
+    const parsedInterval = parseInt(interval_sec, 10);
+    if (isNaN(parsedInterval) || parsedInterval < 5 || parsedInterval > 86400) {
+      return 'Interval must be between 5 and 86400 seconds';
+    }
+  }
+  return null;
+}
+
 app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
   try {
-    const { name, type, url, keyword, interval_sec, pushover_priority, group_name, is_public } = req.body;
-    if (!name || !type) {
-      return res.status(400).json({ error: 'Name and type are required' });
+    const { name, type, url, keyword, interval_sec, pushover_priority, group_name, is_public } = req.body || {};
+    
+    const validationError = validateMonitorInput({ name, type, url, interval_sec });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
     const id = crypto.randomUUID();
@@ -313,44 +371,58 @@ app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
       token = crypto.randomBytes(16).toString('hex');
     }
 
+    const cleanName = name.trim();
+    const cleanGroup = typeof group_name === 'string' && group_name.trim() ? group_name.trim().substring(0, 50) : 'Default';
+    const cleanKeyword = typeof keyword === 'string' ? keyword.substring(0, 100) : '';
+
     const newMonitor = createMonitor({
       id,
-      name,
+      name: cleanName,
       type,
-      url: url || '',
-      keyword: keyword || '',
+      url: (url || '').trim(),
+      keyword: cleanKeyword,
       interval_sec: parseInt(interval_sec, 10) || 60,
       token,
       active: 1,
       pushover_priority: pushover_priority !== undefined ? parseInt(pushover_priority, 10) : (type === 'http' ? 1 : 2),
-      group_name: group_name || 'Default',
+      group_name: cleanGroup,
       is_public: is_public !== undefined ? (is_public ? 1 : 0) : 1
     });
 
     res.json({ monitor: newMonitor });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to create monitor' });
   }
 });
 
 app.put('/api/v1/monitors/:id', checkAdminAuth, (req, res) => {
   try {
-    const { name, type, url, keyword, interval_sec, active, pushover_priority, group_name, is_public } = req.body;
+    const { name, type, url, keyword, interval_sec, active, pushover_priority, group_name, is_public } = req.body || {};
+    
+    const validationError = validateMonitorInput({ name, type, url, interval_sec });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    const cleanName = name.trim();
+    const cleanGroup = typeof group_name === 'string' && group_name.trim() ? group_name.trim().substring(0, 50) : 'Default';
+    const cleanKeyword = typeof keyword === 'string' ? keyword.substring(0, 100) : '';
+
     const updated = updateMonitor({
       id: req.params.id,
-      name,
+      name: cleanName,
       type,
-      url: url || '',
-      keyword: keyword || '',
+      url: (url || '').trim(),
+      keyword: cleanKeyword,
       interval_sec: parseInt(interval_sec, 10) || 60,
       active: active !== undefined ? (active ? 1 : 0) : 1,
       pushover_priority: pushover_priority !== undefined ? parseInt(pushover_priority, 10) : 0,
-      group_name: group_name || 'Default',
+      group_name: cleanGroup,
       is_public: is_public !== undefined ? (is_public ? 1 : 0) : 1
     });
     res.json({ monitor: updated });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to update monitor' });
   }
 });
 

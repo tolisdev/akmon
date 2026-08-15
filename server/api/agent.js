@@ -22,14 +22,25 @@ router.post('/agent', async (req, res) => {
     const previous = getLatestHeartbeat(monitor.id);
     const previousStatus = previous ? previous.status : null;
 
+    // Validate and sanitize metrics
+    const safeLoad = Array.isArray(load) ? load.slice(0, 3).map((n) => (typeof n === 'number' && isFinite(n) ? n : 0)) : [0, 0, 0];
+    while (safeLoad.length < 3) safeLoad.push(0);
+
+    const safeRamUsed = typeof ram_used === 'number' && isFinite(ram_used) ? Math.max(0, ram_used) : 0;
+    const safeRamTotal = typeof ram_total === 'number' && isFinite(ram_total) ? Math.max(0, ram_total) : 0;
+    const safeDiskPct = typeof disk_pct === 'number' && isFinite(disk_pct) ? Math.min(100, Math.max(0, disk_pct)) : 0;
+    const safeOsInfo = typeof os_info === 'string' ? os_info.substring(0, 200) : 'Linux Agent';
+    const safePhpVer = typeof php_ver === 'string' ? php_ver.substring(0, 50) : null;
+    const safePhpMemory = typeof php_memory === 'string' ? php_memory.substring(0, 50) : null;
+
     const metrics = {
-      load: load || [0, 0, 0],
-      ram_used: ram_used || 0,
-      ram_total: ram_total || 0,
-      disk_pct: disk_pct || 0,
-      php_ver: php_ver || null,
-      php_memory: php_memory || null,
-      os_info: os_info || 'Linux Agent',
+      load: safeLoad,
+      ram_used: safeRamUsed,
+      ram_total: safeRamTotal,
+      disk_pct: safeDiskPct,
+      php_ver: safePhpVer,
+      php_memory: safePhpMemory,
+      os_info: safeOsInfo,
       timestamp: new Date().toISOString()
     };
 
