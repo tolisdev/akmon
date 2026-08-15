@@ -19,7 +19,8 @@ import {
   cleanupOldHeartbeats,
   getAllSettings,
   setSettings,
-  getSetting
+  getSetting,
+  deleteHeartbeatsForMonitor
 } from './db.js';
 
 import { startMonitoringDaemon } from './monitors.js';
@@ -106,7 +107,7 @@ app.get('/api/v1/auth/oidc/login', async (req, res) => {
         <!DOCTYPE html>
         <html>
           <head><title>OIDC Configuration Required</title></head>
-          <body style="background:#09090b; color:#f4f4f5; font-family:monospace, sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; padding:20px;">
+          <body style="background:#09090b; color:#f4f4f5; font-family:monospace, sans-serif; display:flex; align-items:center; justify-center; min-height:100vh; margin:0; padding:20px;">
             <div style="max-width:480px; width:100%; background:#18181b; border:1px solid #27272a; padding:24px; border-radius:12px; margin:auto; text-align:center;">
               <h2 style="color:#f43f5e; margin-top:0;">OIDC Not Configured</h2>
               <p style="color:#a1a1aa; font-size:13px; line-height:1.5;">${result.error}</p>
@@ -339,6 +340,15 @@ app.post('/api/v1/monitors/:id/toggle', checkAdminAuth, (req, res) => {
   try {
     const updated = toggleMonitor(req.params.id);
     res.json({ monitor: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/v1/monitors/:id/history', checkAdminAuth, (req, res) => {
+  try {
+    deleteHeartbeatsForMonitor(req.params.id);
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

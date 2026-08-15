@@ -361,6 +361,19 @@
 		}
 	}
 
+	async function clearHistory(m) {
+		if (!confirm(`Clear all heartbeat history for "${m.name}"? This will reset health bars and latency logs.`)) return;
+		try {
+			await fetch(`/api/v1/monitors/${m.id}/history`, {
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			loadMonitors();
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
 	async function deleteMon(m) {
 		if (!confirm(`Delete monitor "${m.name}"?`)) return;
 		try {
@@ -643,14 +656,14 @@
 
 									<!-- Actions -->
 									<td class="py-3 px-4 text-right">
-										<div class="flex items-center justify-end gap-2">
+										<div class="flex items-center justify-end gap-1.5">
 											{#if m.type === 'agent_linux' || m.type === 'agent_php'}
 												<button
 													onclick={() => openAgentInstall(m)}
 													class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-[10px] transition-colors"
 													title="Get Agent Setup Code"
 												>
-													🔑 Token/Install
+													🔑 Token
 												</button>
 											{/if}
 
@@ -666,6 +679,14 @@
 												class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] transition-colors"
 											>
 												Edit
+											</button>
+
+											<button
+												onclick={() => clearHistory(m)}
+												class="px-2 py-1 bg-amber-950/80 hover:bg-amber-900 border border-amber-800/40 text-amber-300 rounded text-[10px] transition-colors"
+												title="Clear all heartbeat history for this monitor"
+											>
+												Clear History
 											</button>
 
 											<button
