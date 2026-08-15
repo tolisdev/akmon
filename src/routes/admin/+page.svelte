@@ -81,6 +81,37 @@
 		return points.join(' ');
 	}
 
+	function generateNetPath(heartbeats = [], key = 'net_rx_kbps', width = 500, height = 120) {
+		if (!heartbeats || heartbeats.length === 0) return '';
+		const maxSpeed = Math.max(...heartbeats.map((hb) => (parseHeartbeatMetrics(hb) || {})[key] || 0), 10);
+		const points = heartbeats.map((hb, i) => {
+			const m = parseHeartbeatMetrics(hb) || {};
+			const val = m[key] || 0;
+			const x = (i / (heartbeats.length - 1 || 1)) * width;
+			const y = height - (val / maxSpeed) * (height - 10) - 5;
+			return `${x.toFixed(1)},${y.toFixed(1)}`;
+		});
+		return points.join(' ');
+	}
+
+	function generateSwapPath(heartbeats = [], width = 500, height = 120) {
+		if (!heartbeats || heartbeats.length === 0) return '';
+		const points = heartbeats.map((hb, i) => {
+			const m = parseHeartbeatMetrics(hb) || {};
+			const pct = m.swap_total > 0 ? (m.swap_used / m.swap_total) * 100 : 0;
+			const x = (i / (heartbeats.length - 1 || 1)) * width;
+			const y = height - (pct / 100) * (height - 10) - 5;
+			return `${x.toFixed(1)},${y.toFixed(1)}`;
+		});
+		return points.join(' ');
+	}
+
+	function formatSpeed(kbps = 0) {
+		if (kbps >= 1024 * 1024) return (kbps / 1024 / 1024).toFixed(1) + ' GB/s';
+		if (kbps >= 1024) return (kbps / 1024).toFixed(1) + ' MB/s';
+		return Math.round(kbps) + ' KB/s';
+	}
+
 	// Settings State (Clean Boolean Checkbox State)
 	let showSettingsModal = $state(false);
 	let settingsLoading = $state(false);
@@ -1527,26 +1558,38 @@
 			</div>
 
 			<!-- Live Summary Cards Grid -->
-			<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 font-mono">
-				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
-					<span class="block text-[10px] text-emerald-400 font-bold">CPU USER</span>
-					<span class="text-lg font-bold text-white mt-0.5">{metrics.cpu_user ?? 0}%</span>
+			<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 font-mono">
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-emerald-400 font-bold">CPU USER</span>
+					<span class="text-base font-bold text-white mt-0.5">{metrics.cpu_user ?? 0}%</span>
 				</div>
-				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
-					<span class="block text-[10px] text-indigo-400 font-bold">CPU SYSTEM</span>
-					<span class="text-lg font-bold text-white mt-0.5">{metrics.cpu_system ?? 0}%</span>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-indigo-400 font-bold">CPU SYS</span>
+					<span class="text-base font-bold text-white mt-0.5">{metrics.cpu_system ?? 0}%</span>
 				</div>
-				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
-					<span class="block text-[10px] text-rose-400 font-bold">CPU IOWAIT</span>
-					<span class="text-lg font-bold text-white mt-0.5">{metrics.cpu_iowait ?? 0}%</span>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-rose-400 font-bold">CPU IOWAIT</span>
+					<span class="text-base font-bold text-white mt-0.5">{metrics.cpu_iowait ?? 0}%</span>
 				</div>
-				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center {metrics.cpu_steal > 0 ? 'bg-amber-950/40 border-amber-500/40' : ''}">
-					<span class="block text-[10px] text-amber-400 font-bold">CPU STEAL</span>
-					<span class="text-lg font-bold {metrics.cpu_steal > 0 ? 'text-amber-300 animate-pulse' : 'text-zinc-300'}">{metrics.cpu_steal ?? 0}%</span>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center {metrics.cpu_steal > 0 ? 'bg-amber-950/40 border-amber-500/40' : ''}">
+					<span class="block text-[9px] text-amber-400 font-bold">CPU STEAL</span>
+					<span class="text-base font-bold {metrics.cpu_steal > 0 ? 'text-amber-300 animate-pulse' : 'text-zinc-300'}">{metrics.cpu_steal ?? 0}%</span>
 				</div>
-				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center col-span-2 sm:col-span-1">
-					<span class="block text-[10px] text-zinc-400 font-bold">RAM UTILIZATION</span>
-					<span class="text-lg font-bold text-zinc-200">{metrics.ram_total > 0 ? Math.round((metrics.ram_used / metrics.ram_total) * 100) : 0}%</span>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-emerald-400 font-bold">NET IN (RX)</span>
+					<span class="text-sm font-bold text-emerald-400 mt-0.5">{formatSpeed(metrics.net_rx_kbps)}</span>
+				</div>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-indigo-400 font-bold">NET OUT (TX)</span>
+					<span class="text-sm font-bold text-indigo-400 mt-0.5">{formatSpeed(metrics.net_tx_kbps)}</span>
+				</div>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-zinc-400 font-bold">RAM UTIL</span>
+					<span class="text-base font-bold text-zinc-200">{metrics.ram_total > 0 ? Math.round((metrics.ram_used / metrics.ram_total) * 100) : 0}%</span>
+				</div>
+				<div class="p-2.5 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[9px] text-zinc-500 font-bold">SWAP UTIL</span>
+					<span class="text-base font-bold text-zinc-400">{metrics.swap_total > 0 ? Math.round((metrics.swap_used / metrics.swap_total) * 100) : 0}%</span>
 				</div>
 			</div>
 
@@ -1574,18 +1617,13 @@
 				<div class="relative w-full h-40 bg-[#18181b]/60 rounded-lg p-2 border border-zinc-800 flex items-center justify-center">
 					{#if heartbeats && heartbeats.length > 1}
 						<svg class="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
-							<!-- Grid Lines -->
 							<line x1="0" y1="30" x2="500" y2="30" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
 							<line x1="0" y1="60" x2="500" y2="60" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
 							<line x1="0" y1="90" x2="500" y2="90" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
 
-							<!-- CPU User Trend -->
 							<polyline fill="none" stroke="#10b981" stroke-width="2" points={generateCpuPath(heartbeats, 'cpu_user')} />
-							<!-- CPU System Trend -->
 							<polyline fill="none" stroke="#6366f1" stroke-width="2" points={generateCpuPath(heartbeats, 'cpu_system')} />
-							<!-- CPU IOWait Trend -->
 							<polyline fill="none" stroke="#f43f5e" stroke-width="2" points={generateCpuPath(heartbeats, 'cpu_iowait')} />
-							<!-- CPU Steal Trend -->
 							<polyline fill="none" stroke="#f59e0b" stroke-width="2.5" points={generateCpuPath(heartbeats, 'cpu_steal')} />
 						</svg>
 					{:else}
@@ -1594,8 +1632,35 @@
 				</div>
 			</div>
 
+			<!-- Graph 2: Network Bandwidth Traffic History (Inbound vs Outbound KB/s) -->
+			<div class="p-4 rounded-xl bg-[#09090b] border border-zinc-800 space-y-3">
+				<div class="flex items-center justify-between">
+					<h4 class="text-xs font-bold font-mono text-zinc-200 uppercase tracking-wide">
+						🌐 Network Bandwidth Traffic (Rx / Tx Throughput)
+					</h4>
+					<div class="flex items-center gap-3 text-[10px] font-mono">
+						<span class="flex items-center gap-1 text-emerald-400"><span class="w-2 h-2 rounded bg-emerald-500"></span> Inbound (Rx): {formatSpeed(metrics.net_rx_kbps)}</span>
+						<span class="flex items-center gap-1 text-indigo-400"><span class="w-2 h-2 rounded bg-indigo-500"></span> Outbound (Tx): {formatSpeed(metrics.net_tx_kbps)}</span>
+					</div>
+				</div>
+
+				<div class="relative w-full h-36 bg-[#18181b]/60 rounded-lg p-2 border border-zinc-800 flex items-center justify-center">
+					{#if heartbeats && heartbeats.length > 1}
+						<svg class="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
+							<line x1="0" y1="40" x2="500" y2="40" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
+							<line x1="0" y1="80" x2="500" y2="80" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
+
+							<polyline fill="none" stroke="#10b981" stroke-width="2" points={generateNetPath(heartbeats, 'net_rx_kbps')} />
+							<polyline fill="none" stroke="#6366f1" stroke-width="2" points={generateNetPath(heartbeats, 'net_tx_kbps')} />
+						</svg>
+					{:else}
+						<span class="text-xs font-mono text-zinc-500">Awaiting network traffic telemetry...</span>
+					{/if}
+				</div>
+			</div>
+
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-				<!-- Graph 2: System Load Averages (1m, 5m, 15m) -->
+				<!-- Graph 3: System Load Averages (1m, 5m, 15m) -->
 				<div class="p-4 rounded-xl bg-[#09090b] border border-zinc-800 space-y-3">
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold font-mono text-zinc-200 uppercase tracking-wide">
@@ -1617,19 +1682,23 @@
 					</div>
 				</div>
 
-				<!-- Graph 3: RAM Memory Utilization -->
+				<!-- Graph 4: RAM & Swap Memory Utilization -->
 				<div class="p-4 rounded-xl bg-[#09090b] border border-zinc-800 space-y-3">
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold font-mono text-zinc-200 uppercase tracking-wide">
-							💾 RAM Usage Trend (MB)
+							💾 RAM & Swap Memory Trend
 						</h4>
-						<span class="text-[10px] font-mono text-zinc-400">{metrics.ram_used} / {metrics.ram_total} MB</span>
+						<div class="flex items-center gap-2 text-[10px] font-mono">
+							<span class="text-emerald-400">RAM: {metrics.ram_used || 0}/{metrics.ram_total || 0} MB</span>
+							<span class="text-amber-400">Swap: {metrics.swap_used || 0}/{metrics.swap_total || 0} MB</span>
+						</div>
 					</div>
 
 					<div class="relative w-full h-32 bg-[#18181b]/60 rounded-lg p-2 border border-zinc-800 flex items-center justify-center">
 						{#if heartbeats && heartbeats.length > 1}
 							<svg class="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
 								<polyline fill="none" stroke="#10b981" stroke-width="2" points={generateRamPath(heartbeats)} />
+								<polyline fill="none" stroke="#f59e0b" stroke-width="1.5" points={generateSwapPath(heartbeats)} />
 							</svg>
 						{:else}
 							<span class="text-xs font-mono text-zinc-500">Awaiting data...</span>

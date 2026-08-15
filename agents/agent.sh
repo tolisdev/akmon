@@ -56,7 +56,28 @@ if [ -f /proc/stat ]; then
   fi
 fi
 
-# Memory Info (MB)
+# Network Traffic (Rx / Tx in KB/s) via /proc/net/dev
+NET_RX_KBPS=0; NET_TX_KBPS=0
+if [ -f /proc/net/dev ]; then
+  NET1=$(awk 'NR>2 {if ($1 != "lo:") {rx+=$2; tx+=$10}} END {print rx,tx}' /proc/net/dev 2>/dev/null)
+  sleep 0.3
+  NET2=$(awk 'NR>2 {if ($1 != "lo:") {rx+=$2; tx+=$10}} END {print rx,tx}' /proc/net/dev 2>/dev/null)
+  
+  if [ -n "$NET1" ] && [ -n "$NET2" ]; then
+    RX1=$(echo "$NET1" | awk '{print $1}')
+    TX1=$(echo "$NET1" | awk '{print $2}')
+    RX2=$(echo "$NET2" | awk '{print $1}')
+    TX2=$(echo "$NET2" | awk '{print $2}')
+    
+    DRX=$(( (RX2 - RX1) * 10 / 3 / 1024 ))
+    DTX=$(( (TX2 - TX1) * 10 / 3 / 1024 ))
+    if [ "$DRX" -ge 0 ]; then NET_RX_KBPS=$DRX; fi
+    if [ "$DTX" -ge 0 ]; then NET_TX_KBPS=$DTX; fi
+  fi
+fi
+
+# Memory Info & Swap (MB)
+RAM_TOTAL=0; RAM_USED=0; SWAP_TOTAL=0; SWAP_USED=0
 if [ -f /proc/meminfo ]; then
   MEM_TOTAL_KB=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
   MEM_AVAIL_KB=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
@@ -69,8 +90,14 @@ if [ -f /proc/meminfo ]; then
   RAM_TOTAL=$((MEM_TOTAL_KB / 1024))
   RAM_AVAIL=$((MEM_AVAIL_KB / 1024))
   RAM_USED=$((RAM_TOTAL - RAM_AVAIL))
-else
-  RAM_TOTAL=0; RAM_USED=0
+
+  SWAP_TOTAL_KB=$(awk '/SwapTotal:/ {print $2}' /proc/meminfo)
+  SWAP_FREE_KB=$(awk '/SwapFree:/ {print $2}' /proc/meminfo)
+  if [ -n "$SWAP_TOTAL_KB" ] && [ "$SWAP_TOTAL_KB" -gt 0 ]; then
+    SWAP_TOTAL=$((SWAP_TOTAL_KB / 1024))
+    SWAP_FREE=$((SWAP_FREE_KB / 1024))
+    SWAP_USED=$((SWAP_TOTAL - SWAP_FREE))
+  fi
 fi
 
 # Disk Usage percentage for root /
@@ -83,7 +110,11 @@ PAYLOAD=$(cat <<EOF
   "load": [$LOAD_1, $LOAD_5, $LOAD_15],
   "ram_used": $RAM_USED,
   "ram_total": $RAM_TOTAL,
+  "swap_used": $SWAP_USED,
+  "swap_total": $SWAP_TOTAL,
   "disk_pct": $DISK_PCT,
+  "net_rx_kbps": $NET_RX_KBPS,
+  "net_tx_kbps": $NET_TX_KBPS,
   "cpu_user": $CPU_USER,
   "cpu_system": $CPU_SYS,
   "cpu_idle": $CPU_IDLE,

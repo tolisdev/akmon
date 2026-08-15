@@ -13,7 +13,11 @@ router.post('/agent', async (req, res) => {
       load,
       ram_used,
       ram_total,
+      swap_used,
+      swap_total,
       disk_pct,
+      net_rx_kbps,
+      net_tx_kbps,
       cpu_user,
       cpu_system,
       cpu_idle,
@@ -42,7 +46,12 @@ router.post('/agent', async (req, res) => {
 
     const safeRamUsed = typeof ram_used === 'number' && isFinite(ram_used) ? Math.max(0, ram_used) : 0;
     const safeRamTotal = typeof ram_total === 'number' && isFinite(ram_total) ? Math.max(0, ram_total) : 0;
+    const safeSwapUsed = typeof swap_used === 'number' && isFinite(swap_used) ? Math.max(0, swap_used) : 0;
+    const safeSwapTotal = typeof swap_total === 'number' && isFinite(swap_total) ? Math.max(0, swap_total) : 0;
     const safeDiskPct = typeof disk_pct === 'number' && isFinite(disk_pct) ? Math.min(100, Math.max(0, disk_pct)) : 0;
+
+    const safeNetRxKbps = typeof net_rx_kbps === 'number' && isFinite(net_rx_kbps) ? Math.max(0, net_rx_kbps) : 0;
+    const safeNetTxKbps = typeof net_tx_kbps === 'number' && isFinite(net_tx_kbps) ? Math.max(0, net_tx_kbps) : 0;
     
     const safeCpuUser = typeof cpu_user === 'number' && isFinite(cpu_user) ? Math.min(100, Math.max(0, cpu_user)) : 0;
     const safeCpuSystem = typeof cpu_system === 'number' && isFinite(cpu_system) ? Math.min(100, Math.max(0, cpu_system)) : 0;
@@ -58,7 +67,11 @@ router.post('/agent', async (req, res) => {
       load: safeLoad,
       ram_used: safeRamUsed,
       ram_total: safeRamTotal,
+      swap_used: safeSwapUsed,
+      swap_total: safeSwapTotal,
       disk_pct: safeDiskPct,
+      net_rx_kbps: safeNetRxKbps,
+      net_tx_kbps: safeNetTxKbps,
       cpu_user: safeCpuUser,
       cpu_system: safeCpuSystem,
       cpu_idle: safeCpuIdle,

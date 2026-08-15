@@ -40,9 +40,35 @@ if (@is_readable('/proc/stat')) {
     }
 }
 
-// Parse System Total & Used RAM from /proc/meminfo if available
-$ramUsed = 0;
-$ramTotal = 0;
+// Network Traffic (Rx/Tx KB/s) via /proc/net/dev
+$netRxKbps = 0; $netTxKbps = 0;
+if (@is_readable('/proc/net/dev')) {
+    $dev1 = @file('/proc/net/dev');
+    usleep(250000);
+    $dev2 = @file('/proc/net/dev');
+    if ($dev1 && $dev2) {
+        $rx1 = 0; $tx1 = 0; $rx2 = 0; $tx2 = 0;
+        for ($i = 2; $i < count($dev1); $i++) {
+            $n1 = preg_split('/\s+/', trim($dev1[$i]));
+            if (isset($n1[0]) && $n1[0] !== 'lo:') {
+                $rx1 += (int)($n1[1] ?? 0);
+                $tx1 += (int)($n1[9] ?? $n1[10] ?? 0);
+            }
+        }
+        for ($i = 2; $i < count($dev2); $i++) {
+            $n2 = preg_split('/\s+/', trim($dev2[$i]));
+            if (isset($n2[0]) && $n2[0] !== 'lo:') {
+                $rx2 += (int)($n2[1] ?? 0);
+                $tx2 += (int)($n2[9] ?? $n2[10] ?? 0);
+            }
+        }
+        $netRxKbps = max(0, round(($rx2 - $rx1) * 4 / 1024, 1));
+        $netTxKbps = max(0, round(($tx2 - $tx1) * 4 / 1024, 1));
+    }
+}
+
+// Parse System Total, Used RAM & Swap from /proc/meminfo if available
+$ramUsed = 0; $ramTotal = 0; $swapUsed = 0; $swapTotal = 0;
 
 if (@is_readable('/proc/meminfo')) {
     $memInfo = @file_get_contents('/proc/meminfo');
@@ -67,6 +93,15 @@ if (@is_readable('/proc/meminfo')) {
             $ramTotal = (int)round($totalKb / 1024);
             $ramUsed = (int)round(($totalKb - $availKb) / 1024);
         }
+
+        preg_match('/SwapTotal:\s+(\d+)\s+kB/', $memInfo, $swapTotalMatch);
+        preg_match('/SwapFree:\s+(\d+)\s+kB/', $memInfo, $swapFreeMatch);
+        $sTotalKb = (int)($swapTotalMatch[1] ?? 0);
+        $sFreeKb = (int)($swapFreeMatch[1] ?? 0);
+        if ($sTotalKb > 0) {
+            $swapTotal = (int)round($sTotalKb / 1024);
+            $swapUsed = (int)round(($sTotalKb - $sFreeKb) / 1024);
+        }
     }
 }
 
@@ -84,7 +119,11 @@ $payload = json_encode([
     'load' => $load,
     'ram_used' => $ramUsed,
     'ram_total' => $ramTotal,
+    'swap_used' => $swapUsed,
+    'swap_total' => $swapTotal,
     'disk_pct' => $diskPct,
+    'net_rx_kbps' => $netRxKbps,
+    'net_tx_kbps' => $netTxKbps,
     'cpu_user' => $cpuUser,
     'cpu_system' => $cpuSys,
     'cpu_idle' => $cpuIdle,
