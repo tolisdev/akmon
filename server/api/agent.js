@@ -8,7 +8,21 @@ const router = express.Router();
 // Agent Telemetry Ingestion Endpoint
 router.post('/agent', async (req, res) => {
   try {
-    const { token, load, ram_used, ram_total, disk_pct, php_ver, php_memory, os_info } = req.body;
+    const {
+      token,
+      load,
+      ram_used,
+      ram_total,
+      disk_pct,
+      cpu_user,
+      cpu_system,
+      cpu_idle,
+      cpu_iowait,
+      cpu_steal,
+      php_ver,
+      php_memory,
+      os_info
+    } = req.body || {};
 
     if (!token) {
       return res.status(400).json({ error: 'Token is required' });
@@ -29,6 +43,13 @@ router.post('/agent', async (req, res) => {
     const safeRamUsed = typeof ram_used === 'number' && isFinite(ram_used) ? Math.max(0, ram_used) : 0;
     const safeRamTotal = typeof ram_total === 'number' && isFinite(ram_total) ? Math.max(0, ram_total) : 0;
     const safeDiskPct = typeof disk_pct === 'number' && isFinite(disk_pct) ? Math.min(100, Math.max(0, disk_pct)) : 0;
+    
+    const safeCpuUser = typeof cpu_user === 'number' && isFinite(cpu_user) ? Math.min(100, Math.max(0, cpu_user)) : 0;
+    const safeCpuSystem = typeof cpu_system === 'number' && isFinite(cpu_system) ? Math.min(100, Math.max(0, cpu_system)) : 0;
+    const safeCpuIdle = typeof cpu_idle === 'number' && isFinite(cpu_idle) ? Math.min(100, Math.max(0, cpu_idle)) : 100;
+    const safeCpuIowait = typeof cpu_iowait === 'number' && isFinite(cpu_iowait) ? Math.min(100, Math.max(0, cpu_iowait)) : 0;
+    const safeCpuSteal = typeof cpu_steal === 'number' && isFinite(cpu_steal) ? Math.min(100, Math.max(0, cpu_steal)) : 0;
+
     const safeOsInfo = typeof os_info === 'string' ? os_info.substring(0, 200) : 'Linux Agent';
     const safePhpVer = typeof php_ver === 'string' ? php_ver.substring(0, 50) : null;
     const safePhpMemory = typeof php_memory === 'string' ? php_memory.substring(0, 50) : null;
@@ -38,6 +59,11 @@ router.post('/agent', async (req, res) => {
       ram_used: safeRamUsed,
       ram_total: safeRamTotal,
       disk_pct: safeDiskPct,
+      cpu_user: safeCpuUser,
+      cpu_system: safeCpuSystem,
+      cpu_idle: safeCpuIdle,
+      cpu_iowait: safeCpuIowait,
+      cpu_steal: safeCpuSteal,
       php_ver: safePhpVer,
       php_memory: safePhpMemory,
       os_info: safeOsInfo,
@@ -88,7 +114,7 @@ router.post('/agent', async (req, res) => {
 
     res.json({ ok: true, message: 'Telemetry received successfully' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to record telemetry' });
   }
 });
 

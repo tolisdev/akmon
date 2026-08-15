@@ -15,6 +15,31 @@ if (!$token || !$serverUrl) {
 
 $load = function_exists('sys_getloadavg') ? sys_getloadavg() : [0, 0, 0];
 
+// CPU breakdown via /proc/stat
+$cpuUser = 0; $cpuSys = 0; $cpuIdle = 100; $cpuIowait = 0; $cpuSteal = 0;
+if (@is_readable('/proc/stat')) {
+    $stat1 = @file_get_contents('/proc/stat');
+    usleep(150000);
+    $stat2 = @file_get_contents('/proc/stat');
+    if ($stat1 && $stat2) {
+        preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat1, $c1);
+        preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat2, $c2);
+        if (!empty($c1) && !empty($c2)) {
+            $u1 = (int)$c1[1] + (int)$c1[2]; $s1 = (int)$c1[3] + (int)$c1[6] + (int)$c1[7]; $i1 = (int)$c1[4]; $w1 = (int)$c1[5]; $st1 = (int)$c1[8];
+            $u2 = (int)$c2[1] + (int)$c2[2]; $s2 = (int)$c2[3] + (int)$c2[6] + (int)$c2[7]; $i2 = (int)$c2[4]; $w2 = (int)$c2[5]; $st2 = (int)$c2[8];
+            $du = $u2 - $u1; $ds = $s2 - $s1; $di = $i2 - $i1; $dw = $w2 - $w1; $dst = $st2 - $st1;
+            $tot = $du + $ds + $di + $dw + $dst;
+            if ($tot > 0) {
+                $cpuUser = round(($du / $tot) * 100, 1);
+                $cpuSys = round(($ds / $tot) * 100, 1);
+                $cpuIdle = round(($di / $tot) * 100, 1);
+                $cpuIowait = round(($dw / $tot) * 100, 1);
+                $cpuSteal = round(($dst / $tot) * 100, 1);
+            }
+        }
+    }
+}
+
 // Parse System Total & Used RAM from /proc/meminfo if available
 $ramUsed = 0;
 $ramTotal = 0;
@@ -60,6 +85,11 @@ $payload = json_encode([
     'ram_used' => $ramUsed,
     'ram_total' => $ramTotal,
     'disk_pct' => $diskPct,
+    'cpu_user' => $cpuUser,
+    'cpu_system' => $cpuSys,
+    'cpu_idle' => $cpuIdle,
+    'cpu_iowait' => $cpuIowait,
+    'cpu_steal' => $cpuSteal,
     'php_memory' => $phpMemoryMb . ' MB',
     'php_ver' => PHP_VERSION,
     'os_info' => PHP_OS . ' (' . php_uname('r') . ')'

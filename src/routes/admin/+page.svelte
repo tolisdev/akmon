@@ -21,6 +21,66 @@
 	let activeMenuId = $state(null);
 	let menuPos = $state({ top: 0, right: 0 });
 
+	// In-Depth Telemetry Modal State
+	let showTelemetryModal = $state(false);
+	let selectedTelemetryMonitor = $state(null);
+
+	function openTelemetryModal(m) {
+		if (!m) return;
+		selectedTelemetryMonitor = m;
+		showTelemetryModal = true;
+	}
+
+	function parseHeartbeatMetrics(hb) {
+		if (!hb || !hb.msg) return null;
+		try {
+			return JSON.parse(hb.msg);
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function generateCpuPath(heartbeats = [], key = 'cpu_user', width = 500, height = 120) {
+		if (!heartbeats || heartbeats.length === 0) return '';
+		const points = heartbeats.map((hb, i) => {
+			const m = parseHeartbeatMetrics(hb) || {};
+			const val = Math.min(100, Math.max(0, m[key] || 0));
+			const x = (i / (heartbeats.length - 1 || 1)) * width;
+			const y = height - (val / 100) * (height - 10) - 5;
+			return `${x.toFixed(1)},${y.toFixed(1)}`;
+		});
+		return points.join(' ');
+	}
+
+	function generateLoadPath(heartbeats = [], loadIndex = 0, width = 500, height = 120) {
+		if (!heartbeats || heartbeats.length === 0) return '';
+		const loads = heartbeats.map((hb) => {
+			const m = parseHeartbeatMetrics(hb) || {};
+			return m.load ? (m.load[loadIndex] || 0) : 0;
+		});
+		const maxLoad = Math.max(...loads, 1);
+		const points = heartbeats.map((hb, i) => {
+			const m = parseHeartbeatMetrics(hb) || {};
+			const val = m.load ? (m.load[loadIndex] || 0) : 0;
+			const x = (i / (heartbeats.length - 1 || 1)) * width;
+			const y = height - (val / maxLoad) * (height - 10) - 5;
+			return `${x.toFixed(1)},${y.toFixed(1)}`;
+		});
+		return points.join(' ');
+	}
+
+	function generateRamPath(heartbeats = [], width = 500, height = 120) {
+		if (!heartbeats || heartbeats.length === 0) return '';
+		const points = heartbeats.map((hb, i) => {
+			const m = parseHeartbeatMetrics(hb) || {};
+			const pct = m.ram_total > 0 ? (m.ram_used / m.ram_total) * 100 : 0;
+			const x = (i / (heartbeats.length - 1 || 1)) * width;
+			const y = height - (pct / 100) * (height - 10) - 5;
+			return `${x.toFixed(1)},${y.toFixed(1)}`;
+		});
+		return points.join(' ');
+	}
+
 	// Settings State (Clean Boolean Checkbox State)
 	let showSettingsModal = $state(false);
 	let settingsLoading = $state(false);
@@ -921,15 +981,29 @@
 		<!-- Agent Telemetry Cards Section -->
 		{#if monitors.some((m) => m.type === 'agent_linux' || m.type === 'agent_php')}
 			<div class="space-y-4">
-				<h2 class="text-sm font-semibold text-white tracking-wide">Agent Server Telemetry</h2>
+				<div class="flex items-center justify-between">
+					<h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+						<span>🖥️</span> Agent Server Telemetry
+					</h2>
+					<button
+						onclick={() => openTelemetryModal(monitors.find((m) => m.type === 'agent_linux' || m.type === 'agent_php'))}
+						class="text-xs font-mono text-emerald-400 hover:text-emerald-300 underline font-semibold flex items-center gap-1 transition-colors"
+					>
+						<span>📊</span> Open In-Depth Analytics →
+					</button>
+				</div>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 					{#each monitors.filter((m) => m.type === 'agent_linux' || m.type === 'agent_php') as m (m.id)}
 						{@const metrics = m.agent_metrics}
-						<div class="p-5 rounded-xl bg-[#18181b] border border-[#27272a] space-y-4">
+						<button
+							type="button"
+							onclick={() => openTelemetryModal(m)}
+							class="p-5 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-emerald-500/40 transition-all cursor-pointer space-y-4 group relative text-left w-full"
+						>
 							<div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
 								<div>
-									<h3 class="font-semibold text-sm text-white">{m.name}</h3>
+									<h3 class="font-semibold text-sm text-white group-hover:text-emerald-400 transition-colors">{m.name}</h3>
 									<span class="text-[10px] font-mono text-zinc-400">{metrics?.os_info || m.type}</span>
 								</div>
 								<div class="text-right">
@@ -944,11 +1018,23 @@
 							</div>
 
 							{#if metrics}
-								<!-- CPU Load -->
-								<div>
-									<div class="flex justify-between text-xs font-mono mb-1 text-zinc-400">
-										<span>CPU Load (1m, 5m, 15m)</span>
-										<span class="text-white font-bold">{metrics.load ? metrics.load.join(', ') : '0, 0, 0'}</span>
+								<!-- Detailed CPU Metrics Breakdown (User, Sys, IOWait, Steal) -->
+								<div class="grid grid-cols-4 gap-1 text-[10px] font-mono p-2 rounded bg-[#09090b] border border-zinc-800 text-center">
+									<div>
+										<span class="block text-zinc-500 text-[9px]">USER</span>
+										<span class="text-emerald-400 font-bold">{metrics.cpu_user ?? 0}%</span>
+									</div>
+									<div>
+										<span class="block text-zinc-500 text-[9px]">SYS</span>
+										<span class="text-indigo-400 font-bold">{metrics.cpu_system ?? 0}%</span>
+									</div>
+									<div>
+										<span class="block text-zinc-500 text-[9px]">IOWAIT</span>
+										<span class="text-rose-400 font-bold">{metrics.cpu_iowait ?? 0}%</span>
+									</div>
+									<div>
+										<span class="block text-zinc-500 text-[9px] font-bold text-amber-400">STEAL</span>
+										<span class="text-amber-300 font-bold">{metrics.cpu_steal ?? 0}%</span>
 									</div>
 								</div>
 
@@ -983,19 +1069,17 @@
 									</div>
 								</div>
 
-								<!-- PHP / Agent Stats -->
-								<div class="pt-2 border-t border-[#27272a] text-[11px] font-mono text-zinc-400 flex justify-between">
-									<span>Last check-in: <strong class="text-zinc-200">{formatExactTime(m.last_check) || '—'}</strong></span>
-									{#if metrics.php_ver}
-										<span>PHP: <strong class="text-zinc-200">{metrics.php_ver}</strong></span>
-									{/if}
+								<!-- Action Footer Trigger -->
+								<div class="pt-2 border-t border-[#27272a] text-[11px] font-mono text-zinc-400 flex items-center justify-between">
+									<span>Click for full CPU graphs & history</span>
+									<span class="text-emerald-400 group-hover:translate-x-0.5 transition-transform">📊 Graphs →</span>
 								</div>
 							{:else}
 								<div class="p-4 text-center text-xs text-zinc-500 font-mono">
 									Awaiting agent telemetry payload...
 								</div>
 							{/if}
-						</div>
+						</button>
 					{/each}
 				</div>
 			</div>
@@ -1404,6 +1488,162 @@
 					class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs font-semibold"
 				>
 					Close
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- In-Depth Agent Telemetry Analytics Modal -->
+{#if showTelemetryModal && selectedTelemetryMonitor}
+	{@const m = selectedTelemetryMonitor}
+	{@const metrics = m.agent_metrics || {}}
+	{@const heartbeats = m.recent_heartbeats || []}
+	<div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+		<div class="w-full max-w-4xl bg-[#18181b] border border-[#27272a] p-6 rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto space-y-6">
+			<!-- Modal Header & Server Selector -->
+			<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#27272a]">
+				<div>
+					<div class="flex items-center gap-2">
+						<span class="w-2.5 h-2.5 rounded-full {m.latest_status === 1 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+						<h3 class="text-base font-bold text-white tracking-wide">{m.name}</h3>
+						<span class="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-[10px] uppercase">{m.type}</span>
+					</div>
+					<p class="text-xs font-mono text-zinc-400 mt-1">{metrics.os_info || 'Linux Operating System'}</p>
+				</div>
+
+				<!-- Server Switcher Dropdown (if multiple agents exist) -->
+				<div class="flex items-center gap-2">
+					<select
+						bind:value={selectedTelemetryMonitor}
+						class="px-3 py-1.5 bg-[#09090b] border border-zinc-700 rounded text-xs text-white font-mono focus:outline-none"
+					>
+						{#each monitors.filter((mon) => mon.type === 'agent_linux' || mon.type === 'agent_php') as agentMon}
+							<option value={agentMon}>{agentMon.name}</option>
+						{/each}
+					</select>
+					<button onclick={() => (showTelemetryModal = false)} class="text-zinc-500 hover:text-white px-2 text-lg">✕</button>
+				</div>
+			</div>
+
+			<!-- Live Summary Cards Grid -->
+			<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 font-mono">
+				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[10px] text-emerald-400 font-bold">CPU USER</span>
+					<span class="text-lg font-bold text-white mt-0.5">{metrics.cpu_user ?? 0}%</span>
+				</div>
+				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[10px] text-indigo-400 font-bold">CPU SYSTEM</span>
+					<span class="text-lg font-bold text-white mt-0.5">{metrics.cpu_system ?? 0}%</span>
+				</div>
+				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center">
+					<span class="block text-[10px] text-rose-400 font-bold">CPU IOWAIT</span>
+					<span class="text-lg font-bold text-white mt-0.5">{metrics.cpu_iowait ?? 0}%</span>
+				</div>
+				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center {metrics.cpu_steal > 0 ? 'bg-amber-950/40 border-amber-500/40' : ''}">
+					<span class="block text-[10px] text-amber-400 font-bold">CPU STEAL</span>
+					<span class="text-lg font-bold {metrics.cpu_steal > 0 ? 'text-amber-300 animate-pulse' : 'text-zinc-300'}">{metrics.cpu_steal ?? 0}%</span>
+				</div>
+				<div class="p-3 rounded-lg bg-[#09090b] border border-zinc-800 text-center col-span-2 sm:col-span-1">
+					<span class="block text-[10px] text-zinc-400 font-bold">RAM UTILIZATION</span>
+					<span class="text-lg font-bold text-zinc-200">{metrics.ram_total > 0 ? Math.round((metrics.ram_used / metrics.ram_total) * 100) : 0}%</span>
+				</div>
+			</div>
+
+			{#if metrics.cpu_steal > 0}
+				<div class="p-3 rounded-lg bg-amber-950/40 border border-amber-500/30 text-amber-300 text-xs font-mono flex items-center gap-2">
+					<span class="text-base">⚠️</span>
+					<span><strong>Hypervisor CPU Steal Detected ({metrics.cpu_steal}%):</strong> Your cloud VPS host is robbing CPU cycles from your instance. Consider upgrading CPU allocation.</span>
+				</div>
+			{/if}
+
+			<!-- Graph 1: Detailed CPU Breakdown Over Time -->
+			<div class="p-4 rounded-xl bg-[#09090b] border border-zinc-800 space-y-3">
+				<div class="flex items-center justify-between">
+					<h4 class="text-xs font-bold font-mono text-zinc-200 uppercase tracking-wide">
+						📈 CPU Usage History Breakdown (Last 60 Check-ins)
+					</h4>
+					<div class="flex items-center gap-3 text-[10px] font-mono">
+						<span class="flex items-center gap-1 text-emerald-400"><span class="w-2 h-2 rounded bg-emerald-500"></span> User</span>
+						<span class="flex items-center gap-1 text-indigo-400"><span class="w-2 h-2 rounded bg-indigo-500"></span> System</span>
+						<span class="flex items-center gap-1 text-rose-400"><span class="w-2 h-2 rounded bg-rose-500"></span> IOWait</span>
+						<span class="flex items-center gap-1 text-amber-400"><span class="w-2 h-2 rounded bg-amber-500"></span> Steal</span>
+					</div>
+				</div>
+
+				<div class="relative w-full h-40 bg-[#18181b]/60 rounded-lg p-2 border border-zinc-800 flex items-center justify-center">
+					{#if heartbeats && heartbeats.length > 1}
+						<svg class="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
+							<!-- Grid Lines -->
+							<line x1="0" y1="30" x2="500" y2="30" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
+							<line x1="0" y1="60" x2="500" y2="60" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
+							<line x1="0" y1="90" x2="500" y2="90" stroke="#27272a" stroke-dasharray="3 3" stroke-width="1" />
+
+							<!-- CPU User Trend -->
+							<polyline fill="none" stroke="#10b981" stroke-width="2" points={generateCpuPath(heartbeats, 'cpu_user')} />
+							<!-- CPU System Trend -->
+							<polyline fill="none" stroke="#6366f1" stroke-width="2" points={generateCpuPath(heartbeats, 'cpu_system')} />
+							<!-- CPU IOWait Trend -->
+							<polyline fill="none" stroke="#f43f5e" stroke-width="2" points={generateCpuPath(heartbeats, 'cpu_iowait')} />
+							<!-- CPU Steal Trend -->
+							<polyline fill="none" stroke="#f59e0b" stroke-width="2.5" points={generateCpuPath(heartbeats, 'cpu_steal')} />
+						</svg>
+					{:else}
+						<span class="text-xs font-mono text-zinc-500">Awaiting multiple agent heartbeat checks for historical CPU trend...</span>
+					{/if}
+				</div>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+				<!-- Graph 2: System Load Averages (1m, 5m, 15m) -->
+				<div class="p-4 rounded-xl bg-[#09090b] border border-zinc-800 space-y-3">
+					<div class="flex items-center justify-between">
+						<h4 class="text-xs font-bold font-mono text-zinc-200 uppercase tracking-wide">
+							📊 System Load Averages (1m, 5m, 15m)
+						</h4>
+						<span class="text-[10px] font-mono text-zinc-400">Latest: {metrics.load ? metrics.load.join(', ') : '0, 0, 0'}</span>
+					</div>
+
+					<div class="relative w-full h-32 bg-[#18181b]/60 rounded-lg p-2 border border-zinc-800 flex items-center justify-center">
+						{#if heartbeats && heartbeats.length > 1}
+							<svg class="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
+								<polyline fill="none" stroke="#10b981" stroke-width="2" points={generateLoadPath(heartbeats, 0)} />
+								<polyline fill="none" stroke="#f59e0b" stroke-width="1.5" points={generateLoadPath(heartbeats, 1)} />
+								<polyline fill="none" stroke="#3b82f6" stroke-width="1.5" points={generateLoadPath(heartbeats, 2)} />
+							</svg>
+						{:else}
+							<span class="text-xs font-mono text-zinc-500">Awaiting data...</span>
+						{/if}
+					</div>
+				</div>
+
+				<!-- Graph 3: RAM Memory Utilization -->
+				<div class="p-4 rounded-xl bg-[#09090b] border border-zinc-800 space-y-3">
+					<div class="flex items-center justify-between">
+						<h4 class="text-xs font-bold font-mono text-zinc-200 uppercase tracking-wide">
+							💾 RAM Usage Trend (MB)
+						</h4>
+						<span class="text-[10px] font-mono text-zinc-400">{metrics.ram_used} / {metrics.ram_total} MB</span>
+					</div>
+
+					<div class="relative w-full h-32 bg-[#18181b]/60 rounded-lg p-2 border border-zinc-800 flex items-center justify-center">
+						{#if heartbeats && heartbeats.length > 1}
+							<svg class="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
+								<polyline fill="none" stroke="#10b981" stroke-width="2" points={generateRamPath(heartbeats)} />
+							</svg>
+						{:else}
+							<span class="text-xs font-mono text-zinc-500">Awaiting data...</span>
+						{/if}
+					</div>
+				</div>
+			</div>
+
+			<div class="flex justify-end pt-3 border-t border-[#27272a]">
+				<button
+					onclick={() => (showTelemetryModal = false)}
+					class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs font-semibold"
+				>
+					Close Analytics
 				</button>
 			</div>
 		</div>
