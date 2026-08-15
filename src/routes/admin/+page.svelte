@@ -44,7 +44,8 @@
 		oidc_issuer: '',
 		oidc_client_id: '',
 		oidc_client_secret: '',
-		oidc_redirect_uri: ''
+		oidc_redirect_uri: '',
+		logo_url: ''
 	});
 
 	// Monitor Form State
@@ -221,6 +222,7 @@
 						pushover_enabled: 'true',
 						smtp_enabled: 'false',
 						oidc_enabled: 'false',
+						logo_url: '',
 						...data.settings
 					};
 				}
@@ -1010,6 +1012,22 @@
 			{/if}
 
 			<div class="space-y-6 text-xs font-mono">
+				<!-- Section 0: Branding & Customization -->
+				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
+					<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">Branding & Customization</h4>
+					<div>
+						<label for="set-logo-url" class="block text-zinc-400 mb-1">PUBLIC & ADMIN LOGO URL</label>
+						<input
+							id="set-logo-url"
+							type="url"
+							bind:value={settingsForm.logo_url}
+							placeholder="https://example.com/logo.png"
+							class="w-full px-3 py-2 bg-[#18181b] border border-zinc-700 rounded text-white focus:outline-none"
+						/>
+						<p class="text-[10px] text-zinc-500 mt-1">Direct image URL (PNG, SVG, JPG) to replace the default AK badge across the status page and dashboard.</p>
+					</div>
+				</section>
+
 				<!-- Section 1: Security & Authentication Options -->
 				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
 					<h4 class="text-xs font-bold uppercase text-amber-400 tracking-wide">Security & Login Methods</h4>

@@ -57,7 +57,8 @@ db.exec(`
     ('password_auth_enabled', 'true'),
     ('pushover_enabled', 'true'),
     ('smtp_enabled', 'false'),
-    ('oidc_enabled', 'false');
+    ('oidc_enabled', 'false'),
+    ('logo_url', '');
 `);
 
 // Migration helper for existing DBs

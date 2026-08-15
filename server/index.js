@@ -75,11 +75,20 @@ app.get('/agents/agent.php', (req, res) => {
 // Ingest API
 app.use('/api/v1', agentRouter);
 
-// Public Auth Configuration Options (Unprotected)
+// Public// Authentication options endpoint for frontend (login page options)
 app.get('/api/v1/auth/options', (req, res) => {
-  const pwdEnabled = getSetting('password_auth_enabled', process.env.DISABLE_PASSWORD_AUTH === 'true' ? 'false' : 'true') !== 'false';
-  const oidcEnabled = getSetting('oidc_enabled', process.env.OIDC_ENABLED || 'false') === 'true';
-  res.json({ password_auth_enabled: pwdEnabled, oidc_enabled: oidcEnabled });
+  try {
+    const passwordAuthEnabled = getSetting('password_auth_enabled', 'true') === 'true';
+    const oidcEnabled = getSetting('oidc_enabled', 'true') === 'true';
+    const logoUrl = getSetting('logo_url', '');
+    res.json({
+      password_auth_enabled: passwordAuthEnabled,
+      oidc_enabled: oidcEnabled,
+      logo_url: logoUrl
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Authentication Route (Standard Password)
@@ -242,7 +251,8 @@ app.get('/api/v1/public/status', (req, res) => {
       };
     });
 
-    res.json({ monitors: publicData });
+    const logoUrl = getSetting('logo_url', '');
+    res.json({ monitors: publicData, logo_url: logoUrl });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

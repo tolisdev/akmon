@@ -85,9 +85,13 @@
 	<header class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
-				<div class="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono font-bold">
-					AK
-				</div>
+				{#if statusData.logo_url && statusData.logo_url.trim() !== ''}
+					<img src={statusData.logo_url} alt="Logo" class="h-10 w-auto max-w-[180px] object-contain rounded-lg" />
+				{:else}
+					<div class="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono font-bold">
+						AK
+					</div>
+				{/if}
 				<div>
 					<h1 class="text-xl font-bold text-white tracking-wide">Infrastructure Status</h1>
 					<p class="text-xs text-zinc-400 font-mono">Uptime & Performance Monitoring</p>
