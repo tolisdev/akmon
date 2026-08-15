@@ -293,6 +293,7 @@
 			if (data.monitors) {
 				monitors = data.monitors;
 			}
+			fetchShareToken();
 		} catch (e) {
 			console.error('Failed to load monitors', e);
 		} finally {
@@ -384,7 +385,10 @@
 		return `${origin}/?token=${shareToken}`;
 	}
 
-	function copyShareLink() {
+	async function copyShareLink() {
+		if (!shareToken) {
+			await fetchShareToken();
+		}
 		const url = getPrivateShareUrl();
 		if (navigator.clipboard) {
 			navigator.clipboard.writeText(url);
