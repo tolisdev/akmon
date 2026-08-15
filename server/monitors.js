@@ -135,14 +135,27 @@ async function checkStaleAgents(monitor) {
 }
 
 export function startMonitoringDaemon(io) {
+  // 5-second daemon tick for accurate check interval scheduling
   setInterval(async () => {
     if (isScanning) return;
     isScanning = true;
 
     try {
       const activeMonitors = getAllMonitors().filter((m) => m.active === 1);
+      const now = Date.now();
 
       for (const m of activeMonitors) {
+        const latest = getLatestHeartbeat(m.id);
+        const intervalMs = (m.interval_sec || 60) * 1000;
+
+        // Enforce configured check interval: skip if checked recently
+        if (latest && latest.created_at) {
+          const lastCheckTime = new Date(latest.created_at).getTime();
+          if (now - lastCheckTime < intervalMs - 1000) {
+            continue;
+          }
+        }
+
         let result = null;
 
         if (m.type === 'http') {
@@ -154,8 +167,7 @@ export function startMonitoringDaemon(io) {
         }
 
         if (result) {
-          const previous = getLatestHeartbeat(m.id);
-          const previousStatus = previous ? previous.status : null;
+          const previousStatus = latest ? latest.status : null;
 
           insertHeartbeat({
             monitor_id: m.id,
@@ -205,5 +217,5 @@ export function startMonitoringDaemon(io) {
     } finally {
       isScanning = false;
     }
-  }, 10000); // 10s loop
+  }, 5000); // 5s ticker loop
 }
