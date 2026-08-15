@@ -55,7 +55,12 @@
 	onMount(() => {
 		fetchStatus();
 
-		const socket = io(window.location.origin);
+		const socketUrl = window.location.origin;
+		const socket = io(socketUrl, {
+			transports: ['websocket', 'polling'],
+			reconnection: true
+		});
+
 		socket.on('heartbeat', (hb) => {
 			if (!statusData.monitors) return;
 			const idx = statusData.monitors.findIndex((m) => m.id === hb.monitor_id);
@@ -192,9 +197,9 @@
 										</div>
 									</div>
 
-									<!-- 60 Segment Health Bar -->
+									<!-- 60 Segment Health Bar Grid (repeat 60 columns CSS) -->
 									<div class="space-y-1.5">
-										<div class="grid grid-cols-60 gap-1 h-7">
+										<div class="grid gap-1 h-7 w-full" style="grid-template-columns: repeat(60, minmax(0, 1fr));">
 											{#each m.segments || [] as seg, i}
 												<div
 													class="rounded-sm transition-all hover:scale-110 relative group {seg.status === 1 ? 'bg-emerald-500' : seg.status === 0 ? 'bg-rose-500' : seg.status === 2 ? 'bg-amber-500' : 'bg-zinc-800'}"
