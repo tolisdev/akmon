@@ -200,27 +200,31 @@ app.post('/api/v1/notifications/test', checkAdminAuth, async (req, res) => {
   return res.status(400).json({ error: 'Invalid notification type' });
 });
 
-// Public Status API (Sanitized & Grouped)
+// Public Status API (Sanitized & Grouped - 60 segment chronological order)
 app.get('/api/v1/public/status', (req, res) => {
   try {
     const monitors = getAllMonitors().filter((m) => m.active === 1);
     const publicData = monitors.map((m) => {
       const latest = getLatestHeartbeat(m.id);
-      const recent = getRecentHeartbeats(m.id, 60);
+      const recent = getRecentHeartbeats(m.id, 60); // returns oldest first (chronological)
       const stats = getMonitorStats(m.id);
 
       const segments = [];
       const totalDesired = 60;
-      for (let i = 0; i < totalDesired; i++) {
-        if (i < recent.length) {
-          segments.push({
-            status: recent[i].status,
-            ping_ms: recent[i].ping_ms,
-            time: recent[i].created_at
-          });
-        } else {
-          segments.push({ status: -1, ping_ms: 0, time: null });
-        }
+      const missingCount = totalDesired - recent.length;
+
+      // Fill missing slots on the left with gray placeholders
+      for (let i = 0; i < missingCount; i++) {
+        segments.push({ status: -1, ping_ms: 0, time: null });
+      }
+
+      // Append actual heartbeats in chronological order (oldest to newest on the right)
+      for (let i = 0; i < recent.length; i++) {
+        segments.push({
+          status: recent[i].status,
+          ping_ms: recent[i].ping_ms,
+          time: recent[i].created_at
+        });
       }
 
       return {
@@ -233,7 +237,7 @@ app.get('/api/v1/public/status', (req, res) => {
         last_check: latest ? latest.created_at : null,
         uptime_pct: stats.uptimePct,
         avg_ping: stats.avgPing,
-        segments: segments.reverse()
+        segments
       };
     });
 
