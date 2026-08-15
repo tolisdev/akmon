@@ -1016,12 +1016,6 @@
 					<h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
 						<span>🖥️</span> Agent Server Telemetry
 					</h2>
-					<button
-						onclick={() => openTelemetryModal(monitors.find((m) => m.type === 'agent_linux' || m.type === 'agent_php'))}
-						class="text-xs font-mono text-emerald-400 hover:text-emerald-300 underline font-semibold flex items-center gap-1 transition-colors"
-					>
-						<span>📊</span> Open In-Depth Analytics →
-					</button>
 				</div>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
