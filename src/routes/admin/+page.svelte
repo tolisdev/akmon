@@ -16,7 +16,7 @@
 	let showAgentModal = $state(false);
 	let selectedAgentMonitor = $state(null);
 
-	// Action Menu State (Fixed Positioning)
+	// Action Menu State (Tight Fixed Positioning)
 	let activeMenuId = $state(null);
 	let menuPos = $state({ top: 0, right: 0 });
 
@@ -87,8 +87,8 @@
 
 		const rect = e.currentTarget.getBoundingClientRect();
 		menuPos = {
-			top: rect.bottom + 4,
-			right: window.innerWidth - rect.right
+			top: Math.round(rect.bottom + 2),
+			right: Math.round(window.innerWidth - rect.right)
 		};
 		activeMenuId = id;
 	}
@@ -697,7 +697,7 @@
 									<td class="py-3 px-4 text-right">
 										<button
 											onclick={(e) => toggleRowMenu(m.id, e)}
-											class="w-8 h-8 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/60 text-zinc-300 hover:text-white flex items-center justify-center transition-colors ml-auto text-base font-bold"
+											class="w-7 h-7 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition-colors ml-auto text-sm font-bold"
 											title="Actions menu"
 										>
 											⋮
@@ -711,18 +711,18 @@
 			</div>
 		</div>
 
-		<!-- Fixed Position Dropdown Overlay (Unclipped Viewport Floating Menu) -->
+		<!-- Snug Fixed Position Dropdown Overlay -->
 		{#if activeMenuId}
 			{@const activeMonitor = monitors.find((m) => m.id === activeMenuId)}
 			{#if activeMonitor}
 				<div
-					class="fixed w-48 bg-[#09090b] border border-[#27272a] rounded-lg shadow-2xl z-50 overflow-hidden py-1 text-left"
+					class="fixed w-44 bg-[#09090b] border border-[#27272a] rounded-lg shadow-2xl z-50 overflow-hidden py-1 text-left m-0"
 					style="top: {menuPos.top}px; right: {menuPos.right}px;"
 				>
 					{#if activeMonitor.type === 'agent_linux' || activeMonitor.type === 'agent_php'}
 						<button
 							onclick={() => openAgentInstall(activeMonitor)}
-							class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
+							class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
 						>
 							<span>🔑</span> Setup Token
 						</button>
@@ -730,28 +730,28 @@
 
 					<button
 						onclick={() => toggleActive(activeMonitor)}
-						class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
+						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
 					>
 						<span>{activeMonitor.active === 1 ? '⏸️' : '▶️'}</span> {activeMonitor.active === 1 ? 'Pause Service' : 'Resume Service'}
 					</button>
 
 					<button
 						onclick={() => openEditModal(activeMonitor)}
-						class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
+						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-zinc-200 text-xs flex items-center gap-2 transition-colors font-mono"
 					>
 						<span>✏️</span> Edit Monitor
 					</button>
 
 					<button
 						onclick={() => clearHistory(activeMonitor)}
-						class="w-full px-3 py-2 text-left hover:bg-zinc-800 text-amber-300 text-xs flex items-center gap-2 transition-colors font-mono border-t border-zinc-800/80"
+						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-amber-300 text-xs flex items-center gap-2 transition-colors font-mono border-t border-zinc-800/80"
 					>
 						<span>🧹</span> Clear History
 					</button>
 
 					<button
 						onclick={() => deleteMon(activeMonitor)}
-						class="w-full px-3 py-2 text-left hover:bg-rose-950/80 text-rose-400 text-xs flex items-center gap-2 transition-colors font-mono border-t border-zinc-800/80"
+						class="w-full px-3 py-1.5 text-left hover:bg-rose-950/80 text-rose-400 text-xs flex items-center gap-2 transition-colors font-mono border-t border-zinc-800/80"
 					>
 						<span>🗑️</span> Delete Service
 					</button>
