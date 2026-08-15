@@ -2,43 +2,51 @@
 	import { onMount } from 'svelte';
 	import io from 'socket.io-client';
 
-	let monitors = $state([]);
+	let statusData = $state({ monitors: [] });
 	let loading = $state(true);
-	let tooltip = $state({ visible: false, x: 0, y: 0, content: '' });
+	let error = $state(null);
+	let activeTab = $state('all');
 
-	let overallStatus = $derived(() => {
-		if (monitors.length === 0) return 'operational';
-		const hasDown = monitors.some((m) => m.status === 0);
-		if (hasDown) return 'disruption';
-		const hasDegraded = monitors.some((m) => m.status === 2);
-		if (hasDegraded) return 'degraded';
-		return 'operational';
-	});
+	// Group Monitors by section
+	let groups = $derived.by(() => {
+		const map = {};
+		const monitors = statusData.monitors || [];
 
-	// Group monitors dynamically by group_name
-	let groupedMonitors = $derived(() => {
-		const groups = {};
 		for (const m of monitors) {
-			const groupName = m.group_name || 'Default Services';
-			if (!groups[groupName]) {
-				groups[groupName] = [];
+			const groupName = m.group_name || 'Default';
+			if (!map[groupName]) {
+				map[groupName] = [];
 			}
-			groups[groupName].push(m);
+			map[groupName].push(m);
 		}
-		return groups;
+
+		return map;
 	});
+
+	let groupKeys = $derived(Object.keys(groups));
+
+	function formatRelativeTime(dateStr) {
+		if (!dateStr) return 'Never';
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+		if (isNaN(diffSec)) return '—';
+		if (diffSec < 5) return 'Just now';
+		if (diffSec < 60) return `${diffSec}s ago`;
+		if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+		if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+		return `${Math.floor(diffSec / 86400)}d ago`;
+	}
 
 	async function fetchStatus() {
 		try {
 			const res = await fetch('/api/v1/public/status');
-			if (res.ok) {
-				const data = await res.json();
-				if (data.monitors) {
-					monitors = data.monitors;
-				}
-			}
-		} catch (e) {
-			console.error('Failed to fetch status', e);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = await res.json();
+			statusData = data;
+		} catch (err) {
+			error = err.message || 'Failed to load status data';
 		} finally {
 			loading = false;
 		}
@@ -47,196 +55,172 @@
 	onMount(() => {
 		fetchStatus();
 
-		const socketUrl = window.location.origin;
-		const socketInstance = io(socketUrl);
-
-		socketInstance.on('heartbeat', (hb) => {
-			const idx = monitors.findIndex((m) => m.id === hb.monitor_id);
+		const socket = io(window.location.origin);
+		socket.on('heartbeat', (hb) => {
+			if (!statusData.monitors) return;
+			const idx = statusData.monitors.findIndex((m) => m.id === hb.monitor_id);
 			if (idx !== -1) {
-				monitors[idx].status = hb.status;
-				monitors[idx].ping_ms = hb.ping_ms;
-				monitors[idx].last_check = hb.created_at;
+				const m = statusData.monitors[idx];
+				m.status = hb.status;
+				m.ping_ms = hb.ping_ms;
+				m.last_check = hb.created_at;
 
-				const segs = [...monitors[idx].segments];
-				segs.shift();
+				const segs = [...(m.segments || [])];
+				segs.shift(); // Remove oldest on the left
 				segs.push({
 					status: hb.status,
 					ping_ms: hb.ping_ms,
 					time: hb.created_at
 				});
-				monitors[idx].segments = segs;
+				m.segments = segs;
 			}
 		});
 
 		return () => {
-			if (socketInstance) socketInstance.disconnect();
+			socket.disconnect();
 		};
 	});
 
-	function handleMouseEnter(e, seg) {
-		if (seg.status === -1) return;
-		const rect = e.currentTarget.getBoundingClientRect();
-		const statusText = seg.status === 1 ? 'OPERATIONAL' : seg.status === 2 ? 'DEGRADED' : 'OFFLINE';
-		const pingText = seg.ping_ms > 0 ? `${seg.ping_ms}ms` : '';
-		const timeStr = seg.time ? new Date(seg.time.replace(' ', 'T') + 'Z').toLocaleTimeString() : '';
-
-		tooltip = {
-			visible: true,
-			x: rect.left + rect.width / 2,
-			y: rect.top - 40,
-			content: `${statusText} ${pingText ? '• ' + pingText : ''} ${timeStr ? '• ' + timeStr : ''}`
-		};
-	}
-
-	function handleMouseLeave() {
-		tooltip = { ...tooltip, visible: false };
+	function getOverallStatusText() {
+		const monitors = statusData.monitors || [];
+		if (monitors.length === 0) return { text: 'No Services Monitored', color: 'text-zinc-400', bg: 'bg-zinc-800' };
+		const isDown = monitors.some((m) => m.status === 0);
+		if (isDown) return { text: 'Some Systems Experiencing Outages', color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20' };
+		const isDegraded = monitors.some((m) => m.status === 2);
+		if (isDegraded) return { text: 'Degraded Performance Detected', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' };
+		return { text: 'All Systems Operational', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' };
 	}
 </script>
 
-<div class="max-w-4xl mx-auto px-4 py-12 w-full flex-grow">
-	<!-- Top Bar / Header -->
-	<header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-8 mb-8 border-b border-[#27272a]">
-		<div>
+<div class="max-w-6xl mx-auto px-4 py-8 space-y-8">
+	<!-- Hero / Status Banner -->
+	<header class="space-y-4">
+		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
-				<span class="inline-block w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-				<h1 class="text-2xl font-bold tracking-tight text-white">System Status</h1>
+				<div class="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono font-bold">
+					AK
+				</div>
+				<div>
+					<h1 class="text-xl font-bold text-white tracking-wide">Infrastructure Status</h1>
+					<p class="text-xs text-zinc-400 font-mono">Real-time Uptime & Performance Monitoring</p>
+				</div>
 			</div>
-			<p class="text-xs text-zinc-400 mt-1">Real-time uptime telemetry & monitoring</p>
+			<a href="/admin" class="text-xs text-zinc-400 hover:text-white font-mono underline">Admin Login →</a>
 		</div>
 
-		<!-- Status Badge -->
-		{#if overallStatus() === 'operational'}
-			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-				<span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-				All Systems Operational
-			</div>
-		{:else if overallStatus() === 'degraded'}
-			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-950/60 border border-amber-500/30 text-amber-400 text-xs font-semibold">
-				<span class="w-2 h-2 rounded-full bg-amber-500"></span>
-				Partial Performance Degradation
-			</div>
-		{:else}
-			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-950/60 border border-rose-500/30 text-rose-400 text-xs font-semibold">
-				<span class="w-2 h-2 rounded-full bg-rose-500 animate-bounce"></span>
-				Service Disruption Detected
+		{#if !loading && !error}
+			{@const overall = getOverallStatusText()}
+			<div class="p-4 rounded-xl border flex items-center justify-between {overall.bg}">
+				<div class="flex items-center gap-3">
+					<span class="relative flex h-3 w-3">
+						<span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 {overall.color === 'text-emerald-400' ? 'bg-emerald-400' : 'bg-rose-400'}"></span>
+						<span class="relative inline-flex rounded-full h-3 w-3 {overall.color === 'text-emerald-400' ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+					</span>
+					<span class="font-semibold text-sm tracking-wide {overall.color}">{overall.text}</span>
+				</div>
+				<span class="text-xs text-zinc-500 font-mono">Live Socket.IO Sync</span>
 			</div>
 		{/if}
 	</header>
 
-	<!-- Main Grouped Monitor List -->
+	<!-- Main Content -->
 	{#if loading}
-		<div class="space-y-4">
-			{#each Array(3) as _}
-				<div class="p-5 rounded-lg bg-[#18181b] border border-[#27272a] animate-pulse">
-					<div class="h-5 bg-zinc-800 rounded w-1/3 mb-4"></div>
-					<div class="h-8 bg-zinc-800 rounded w-full"></div>
-				</div>
-			{/each}
+		<div class="p-12 text-center text-zinc-500 font-mono">
+			<div class="inline-block animate-spin w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full mb-2"></div>
+			<p>Connecting to telemetry daemon...</p>
 		</div>
-	{:else if monitors.length === 0}
-		<div class="p-12 text-center rounded-xl bg-[#18181b] border border-[#27272a]">
-			<div class="w-12 h-12 rounded-full bg-zinc-800/80 flex items-center justify-center mx-auto mb-3 text-zinc-400">
-				📡
-			</div>
-			<h3 class="text-sm font-semibold text-zinc-200">No Services Registered</h3>
-			<p class="text-xs text-zinc-500 mt-1">Monitors added via the admin dashboard will appear here automatically.</p>
+	{:else if error}
+		<div class="p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs font-mono">
+			Error: {error}
 		</div>
 	{:else}
-		<div class="space-y-8">
-			{#each Object.entries(groupedMonitors()) as [groupName, groupList]}
-				{@const upCount = groupList.filter((m) => m.status === 1).length}
-				<section class="space-y-3">
-					<!-- Group Header -->
-					<div class="flex items-center justify-between pb-2 border-b border-[#27272a]">
-						<h2 class="text-sm font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
-							<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-							{groupName}
-						</h2>
-						<span class="text-xs font-mono text-zinc-500">
-							{upCount}/{groupList.length} Operational
-						</span>
-					</div>
+		<!-- Group Navigation Tabs -->
+		{#if groupKeys.length > 1}
+			<div class="flex border-b border-[#27272a] gap-2">
+				<button
+					onclick={() => (activeTab = 'all')}
+					class="pb-2 px-3 text-xs font-mono transition-colors border-b-2 font-semibold {activeTab === 'all' ? 'border-emerald-500 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+				>
+					All ({statusData.monitors.length})
+				</button>
+				{#each groupKeys as groupName}
+					<button
+						onclick={() => (activeTab = groupName)}
+						class="pb-2 px-3 text-xs font-mono transition-colors border-b-2 font-semibold {activeTab === groupName ? 'border-emerald-500 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}"
+					>
+						{groupName} ({groups[groupName].length})
+					</button>
+				{/each}
+			</div>
+		{/if}
 
-					<div class="space-y-4">
-						{#each groupList as monitor (monitor.id)}
-							<div class="p-5 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-zinc-700 transition-colors shadow-sm">
-								<!-- Card Header -->
-								<div class="flex items-center justify-between mb-4">
-									<div class="flex items-center gap-3">
-										<span class="font-medium text-sm text-white tracking-wide">{monitor.name}</span>
-										<span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50">
-											{monitor.type}
-										</span>
+		<!-- Group Sections -->
+		<div class="space-y-8">
+			{#each groupKeys as groupName (groupName)}
+				{#if activeTab === 'all' || activeTab === groupName}
+					{@const groupMonitors = groups[groupName]}
+					<section class="space-y-4">
+						<div class="flex items-center justify-between pb-2 border-b border-[#27272a]">
+							<h2 class="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+								<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+								{groupName}
+							</h2>
+							<div class="text-xs font-mono text-zinc-400">
+								{groupMonitors.filter((m) => m.status === 1).length} / {groupMonitors.length} Operational
+							</div>
+						</div>
+
+						<div class="space-y-3">
+							{#each groupMonitors as m (m.id)}
+								<div class="p-4 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-zinc-700/80 transition-all space-y-3">
+									<div class="flex items-center justify-between">
+										<div class="flex items-center gap-3">
+											<span class="w-2.5 h-2.5 rounded-full {m.status === 1 ? 'bg-emerald-500' : m.status === 2 ? 'bg-amber-500' : 'bg-rose-500'}"></span>
+											<span class="font-semibold text-sm text-white tracking-wide">{m.name}</span>
+											<span class="text-xs text-zinc-500 font-mono">({m.type})</span>
+										</div>
+										<div class="flex items-center gap-4 text-xs font-mono">
+											<span class="text-zinc-400">
+												Last ping: <strong class="text-zinc-200">{formatRelativeTime(m.last_check)}</strong>
+											</span>
+											{#if m.ping_ms > 0}
+												<span class="text-zinc-400">Latency: <strong class="text-zinc-200">{m.ping_ms}ms</strong></span>
+											{/if}
+											<span class="font-bold {m.uptime_pct >= 99 ? 'text-emerald-400' : m.uptime_pct >= 95 ? 'text-amber-400' : 'text-rose-400'}">
+												{m.uptime_pct}% Uptime
+											</span>
+										</div>
 									</div>
 
-									<div class="flex items-center gap-4 text-xs font-mono">
-										{#if monitor.ping_ms > 0}
-											<span class="text-zinc-400">{monitor.ping_ms}<span class="text-[10px] text-zinc-500">ms</span></span>
-										{/if}
+									<!-- 60 Segment Health Bar -->
+									<div class="space-y-1.5">
+										<div class="grid grid-cols-60 gap-1 h-7">
+											{#each m.segments || [] as seg, i}
+												<div
+													class="rounded-sm transition-all hover:scale-110 relative group {seg.status === 1 ? 'bg-emerald-500' : seg.status === 0 ? 'bg-rose-500' : seg.status === 2 ? 'bg-amber-500' : 'bg-zinc-800'}"
+												>
+													<!-- Tooltip -->
+													<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-20 pointer-events-none">
+														<div class="bg-[#09090b] border border-zinc-700 text-white text-[10px] font-mono px-2 py-1 rounded shadow-xl whitespace-nowrap">
+															<div>{seg.time ? new Date(seg.time).toLocaleTimeString() : 'No Check'}</div>
+															<div class="text-zinc-400">{seg.status === 1 ? `UP (${seg.ping_ms}ms)` : seg.status === 0 ? 'DOWN' : 'No Data'}</div>
+														</div>
+													</div>
+												</div>
+											{/each}
+										</div>
 
-										<div class="flex items-center gap-1.5">
-											{#if monitor.status === 1}
-												<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-												<span class="text-emerald-400 font-medium">UP</span>
-											{:else if monitor.status === 2}
-												<span class="w-2 h-2 rounded-full bg-amber-500"></span>
-												<span class="text-amber-400 font-medium">DEGRADED</span>
-											{:else}
-												<span class="w-2 h-2 rounded-full bg-rose-500"></span>
-												<span class="text-rose-400 font-medium">DOWN</span>
-											{/if}
+										<div class="flex justify-between text-[10px] font-mono text-zinc-500">
+											<span>60 checks ago</span>
+											<span>Recently</span>
 										</div>
 									</div>
 								</div>
-
-								<!-- 60-Segment Historical Health Bar -->
-								<div class="relative">
-									<div class="grid grid-cols-60 gap-[2px] h-8 items-center bg-[#09090b] p-1 rounded-md border border-zinc-800/80">
-										{#each monitor.segments as seg, idx}
-											<div
-												role="button"
-												tabindex="0"
-												class="h-full rounded-[1px] transition-all duration-150 cursor-pointer hover:scale-y-125 hover:opacity-100 opacity-90 {seg.status === 1 ? 'bg-emerald-500' : seg.status === 2 ? 'bg-amber-500' : seg.status === 0 ? 'bg-rose-500' : 'bg-zinc-800/40'}"
-												onmouseenter={(e) => handleMouseEnter(e, seg)}
-												onmouseleave={handleMouseLeave}
-											></div>
-										{/each}
-									</div>
-
-									<!-- Health Bar Footer Details -->
-									<div class="flex justify-between items-center text-[10px] text-zinc-500 font-mono mt-2 px-0.5">
-										<span>60 checks ago</span>
-										<span class="text-zinc-400 font-semibold">{monitor.uptime_pct}% uptime</span>
-										<span>Recently</span>
-									</div>
-								</div>
-							</div>
-						{/each}
-					</div>
-				</section>
+							{/each}
+						</div>
+					</section>
+				{/if}
 			{/each}
 		</div>
 	{/if}
-
-	<!-- Dynamic Floating Tooltip -->
-	{#if tooltip.visible}
-		<div
-			class="fixed z-50 transform -translate-x-1/2 px-2.5 py-1 rounded bg-zinc-900 border border-zinc-700 text-[11px] font-mono text-zinc-200 shadow-xl pointer-events-none whitespace-nowrap"
-			style="left: {tooltip.x}px; top: {tooltip.y}px;"
-		>
-			{tooltip.content}
-		</div>
-	{/if}
-
-	<!-- Footer -->
-	<footer class="mt-16 pt-6 border-t border-[#27272a]/60 text-center text-xs text-zinc-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-		<span>akMon High-Efficiency Monitor • Single Process Engine</span>
-		<a href="/admin" class="text-zinc-400 hover:text-white transition-colors underline font-mono text-[11px]">Admin Management →</a>
-	</footer>
 </div>
-
-<style>
-	.grid-cols-60 {
-		grid-template-columns: repeat(60, minmax(0, 1fr));
-	}
-</style>

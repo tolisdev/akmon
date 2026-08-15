@@ -53,6 +53,27 @@
 	let formPushoverPriority = $state(1);
 	let formError = $state('');
 
+	// Helper for Relative Time
+	function formatRelativeTime(dateStr) {
+		if (!dateStr) return 'Never';
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+		if (isNaN(diffSec)) return '—';
+		if (diffSec < 5) return 'Just now';
+		if (diffSec < 60) return `${diffSec}s ago`;
+		if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+		if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+		return `${Math.floor(diffSec / 86400)}d ago`;
+	}
+
+	function formatExactTime(dateStr) {
+		if (!dateStr) return '';
+		const d = new Date(dateStr);
+		return isNaN(d.getTime()) ? '' : d.toLocaleTimeString();
+	}
+
 	// Automatically adjust default group and priority when type changes
 	$effect(() => {
 		if (!editingMonitor) {
@@ -251,6 +272,7 @@
 			const idx = monitors.findIndex((m) => m.id === monitor_id);
 			if (idx !== -1) {
 				monitors[idx].agent_metrics = metrics;
+				monitors[idx].last_check = new Date().toISOString();
 			}
 		});
 
@@ -507,6 +529,7 @@
 							<th class="py-3 px-4">Name / Target</th>
 							<th class="py-3 px-4">Group</th>
 							<th class="py-3 px-4">Type</th>
+							<th class="py-3 px-4">Last Check / Ping</th>
 							<th class="py-3 px-4">Pushover Priority</th>
 							<th class="py-3 px-4">Latency</th>
 							<th class="py-3 px-4">Latency Trend</th>
@@ -517,11 +540,11 @@
 					<tbody class="divide-y divide-[#27272a]/60 text-xs font-mono">
 						{#if loading}
 							<tr>
-								<td colspan="9" class="p-8 text-center text-zinc-500">Loading monitor telemetry...</td>
+								<td colspan="10" class="p-8 text-center text-zinc-500">Loading monitor telemetry...</td>
 							</tr>
 						{:else if monitors.length === 0}
 							<tr>
-								<td colspan="9" class="p-8 text-center text-zinc-500">No monitors configured yet. Click "+ Add Monitor" above.</td>
+								<td colspan="10" class="p-8 text-center text-zinc-500">No monitors configured yet. Click "+ Add Monitor" above.</td>
 							</tr>
 						{:else}
 							{#each monitors as m (m.id)}
@@ -563,6 +586,16 @@
 										<span class="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700/80 text-[10px] uppercase text-zinc-300">
 											{m.type}
 										</span>
+									</td>
+
+									<!-- Last Check / Ping Time -->
+									<td class="py-3 px-4">
+										{#if m.last_check}
+											<div class="text-zinc-200 font-bold text-[11px]">{formatRelativeTime(m.last_check)}</div>
+											<div class="text-[10px] text-zinc-500">{formatExactTime(m.last_check)}</div>
+										{:else}
+											<span class="text-zinc-600 text-[10px]">Never</span>
+										{/if}
 									</td>
 
 									<!-- Pushover Priority -->
@@ -665,7 +698,15 @@
 									<h3 class="font-semibold text-sm text-white">{m.name}</h3>
 									<span class="text-[10px] font-mono text-zinc-400">{metrics?.os_info || m.type}</span>
 								</div>
-								<span class="w-2 h-2 rounded-full {m.latest_status === 1 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+								<div class="text-right">
+									<div class="flex items-center justify-end gap-1.5">
+										<span class="w-2 h-2 rounded-full {m.latest_status === 1 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+										<span class="text-xs font-mono font-bold text-white">{m.latest_status === 1 ? 'UP' : 'DOWN'}</span>
+									</div>
+									<div class="text-[10px] font-mono text-emerald-400 mt-0.5">
+										Last ping: <strong class="text-white">{formatRelativeTime(m.last_check)}</strong>
+									</div>
+								</div>
 							</div>
 
 							{#if metrics}
@@ -708,13 +749,13 @@
 									</div>
 								</div>
 
-								<!-- PHP Info -->
-								{#if metrics.php_ver}
-									<div class="pt-2 border-t border-[#27272a] text-[11px] font-mono text-zinc-400 flex justify-between">
-										<span>PHP Version: <strong class="text-zinc-200">{metrics.php_ver}</strong></span>
-										<span>Peak Mem: <strong class="text-zinc-200">{metrics.php_memory || 'N/A'}</strong></span>
-									</div>
-								{/if}
+								<!-- PHP / Agent Stats -->
+								<div class="pt-2 border-t border-[#27272a] text-[11px] font-mono text-zinc-400 flex justify-between">
+									<span>Last check-in: <strong class="text-zinc-200">{formatExactTime(m.last_check) || '—'}</strong></span>
+									{#if metrics.php_ver}
+										<span>PHP: <strong class="text-zinc-200">{metrics.php_ver}</strong></span>
+									{/if}
+								</div>
 							{:else}
 								<div class="p-4 text-center text-xs text-zinc-500 font-mono">
 									Awaiting agent telemetry payload...
