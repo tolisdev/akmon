@@ -7,7 +7,7 @@
 	let authError = $state('');
 	let authToken = $state('');
 
-	let authOptions = $state({ password_auth_enabled: true, oidc_enabled: false });
+	let authOptions = $state({ password_auth_enabled: true, oidc_enabled: false, logo_url: '' });
 
 	let monitors = $state([]);
 	let loading = $state(true);
@@ -20,7 +20,7 @@
 	let activeMenuId = $state(null);
 	let menuPos = $state({ top: 0, right: 0 });
 
-	// Settings State
+	// Settings State (Clean Boolean Checkbox State)
 	let showSettingsModal = $state(false);
 	let settingsLoading = $state(false);
 	let settingsMessage = $state('');
@@ -28,11 +28,13 @@
 	let testStatus = $state({ pushover: '', email: '' });
 
 	let settingsForm = $state({
-		password_auth_enabled: 'true',
-		pushover_enabled: 'true',
+		password_auth_enabled: true,
+		pushover_enabled: true,
+		smtp_enabled: false,
+		oidc_enabled: false,
+		logo_url: '',
 		pushover_user_key: '',
 		pushover_api_token: '',
-		smtp_enabled: 'false',
 		smtp_host: '',
 		smtp_port: '587',
 		smtp_secure: 'false',
@@ -40,12 +42,10 @@
 		smtp_pass: '',
 		smtp_from: '',
 		smtp_to: '',
-		oidc_enabled: 'false',
 		oidc_issuer: '',
 		oidc_client_id: '',
 		oidc_client_secret: '',
-		oidc_redirect_uri: '',
-		logo_url: ''
+		oidc_redirect_uri: ''
 	});
 
 	// Monitor Form State
@@ -217,13 +217,26 @@
 			if (res.ok) {
 				const data = await res.json();
 				if (data.settings) {
+					const s = data.settings;
 					settingsForm = {
-						password_auth_enabled: 'true',
-						pushover_enabled: 'true',
-						smtp_enabled: 'false',
-						oidc_enabled: 'false',
-						logo_url: '',
-						...data.settings
+						password_auth_enabled: s.password_auth_enabled !== 'false',
+						pushover_enabled: s.pushover_enabled !== 'false',
+						smtp_enabled: s.smtp_enabled === 'true',
+						oidc_enabled: s.oidc_enabled === 'true',
+						logo_url: s.logo_url || '',
+						pushover_user_key: s.pushover_user_key || '',
+						pushover_api_token: s.pushover_api_token || '',
+						smtp_host: s.smtp_host || '',
+						smtp_port: s.smtp_port || '587',
+						smtp_secure: s.smtp_secure || 'false',
+						smtp_user: s.smtp_user || '',
+						smtp_pass: s.smtp_pass || '',
+						smtp_from: s.smtp_from || '',
+						smtp_to: s.smtp_to || '',
+						oidc_issuer: s.oidc_issuer || '',
+						oidc_client_id: s.oidc_client_id || '',
+						oidc_client_secret: s.oidc_client_secret || '',
+						oidc_redirect_uri: s.oidc_redirect_uri || ''
 					};
 				}
 			}
@@ -238,14 +251,23 @@
 		settingsMessage = '';
 		settingsError = '';
 		try {
+			const payload = {
+				...settingsForm,
+				password_auth_enabled: settingsForm.password_auth_enabled ? 'true' : 'false',
+				pushover_enabled: settingsForm.pushover_enabled ? 'true' : 'false',
+				smtp_enabled: settingsForm.smtp_enabled ? 'true' : 'false',
+				oidc_enabled: settingsForm.oidc_enabled ? 'true' : 'false'
+			};
+
 			const res = await fetch('/api/v1/settings', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					Authorization: `Bearer ${authToken}`
 				},
-				body: JSON.stringify(settingsForm)
+				body: JSON.stringify(payload)
 			});
+
 			if (res.ok) {
 				settingsMessage = 'Settings saved successfully!';
 				fetchAuthOptions();
@@ -460,9 +482,13 @@
 	<div class="min-h-screen flex items-center justify-center p-4">
 		<div class="w-full max-w-sm bg-[#18181b] border border-[#27272a] p-6 rounded-xl shadow-2xl space-y-6">
 			<div class="flex items-center gap-3">
-				<div class="w-8 h-8 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono text-xs font-bold">
-					AK
-				</div>
+				{#if authOptions.logo_url && authOptions.logo_url.trim() !== ''}
+					<img src={authOptions.logo_url} alt="Logo" class="h-8 w-auto max-w-[140px] object-contain rounded" />
+				{:else}
+					<div class="w-8 h-8 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono text-xs font-bold">
+						AK
+					</div>
+				{/if}
 				<div>
 					<h2 class="text-base font-bold text-white tracking-wide">Admin Dashboard</h2>
 					<p class="text-xs text-zinc-400">akMon System Management</p>
@@ -523,6 +549,9 @@
 			<div class="flex items-center gap-4">
 				<a href="/" class="text-xs text-zinc-400 hover:text-white transition-colors">← Public Status</a>
 				<div class="h-4 w-px bg-zinc-800"></div>
+				{#if authOptions.logo_url && authOptions.logo_url.trim() !== ''}
+					<img src={authOptions.logo_url} alt="Logo" class="h-7 w-auto max-w-[140px] object-contain rounded" />
+				{/if}
 				<h1 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
 					<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
 					Management Console
@@ -1038,8 +1067,8 @@
 							<span class="text-[10px] text-zinc-400">Allow logging in via standard admin password</span>
 						</div>
 						<label class="flex items-center gap-2 cursor-pointer">
-							<input type="checkbox" bind:checked={settingsForm.password_auth_enabled} truevalue="true" falsevalue="false" />
-							<span class="text-emerald-400 font-bold">{settingsForm.password_auth_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
+							<input type="checkbox" bind:checked={settingsForm.password_auth_enabled} class="w-4 h-4 accent-emerald-500 cursor-pointer" />
+							<span class="text-emerald-400 font-bold">{settingsForm.password_auth_enabled ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 				</section>
@@ -1049,8 +1078,8 @@
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">Pushover Push Notifications</h4>
 						<label class="flex items-center gap-2 cursor-pointer text-zinc-300 text-[11px]">
-							<input type="checkbox" bind:checked={settingsForm.pushover_enabled} truevalue="true" falsevalue="false" />
-							<span class="text-emerald-400 font-bold">{settingsForm.pushover_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
+							<input type="checkbox" bind:checked={settingsForm.pushover_enabled} class="w-4 h-4 accent-emerald-500 cursor-pointer" />
+							<span class="text-emerald-400 font-bold">{settingsForm.pushover_enabled ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 
@@ -1080,8 +1109,8 @@
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">SMTP Email Alerts</h4>
 						<label class="flex items-center gap-2 cursor-pointer text-zinc-300 text-[11px]">
-							<input type="checkbox" bind:checked={settingsForm.smtp_enabled} truevalue="true" falsevalue="false" />
-							<span class="text-emerald-400 font-bold">{settingsForm.smtp_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
+							<input type="checkbox" bind:checked={settingsForm.smtp_enabled} class="w-4 h-4 accent-emerald-500 cursor-pointer" />
+							<span class="text-emerald-400 font-bold">{settingsForm.smtp_enabled ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 
@@ -1133,8 +1162,8 @@
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold uppercase text-indigo-400 tracking-wide">PocketID OpenID Connect (OIDC)</h4>
 						<label class="flex items-center gap-2 cursor-pointer text-zinc-300 text-[11px]">
-							<input type="checkbox" bind:checked={settingsForm.oidc_enabled} truevalue="true" falsevalue="false" />
-							<span class="text-indigo-400 font-bold">{settingsForm.oidc_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
+							<input type="checkbox" bind:checked={settingsForm.oidc_enabled} class="w-4 h-4 accent-indigo-500 cursor-pointer" />
+							<span class="text-indigo-400 font-bold">{settingsForm.oidc_enabled ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 
