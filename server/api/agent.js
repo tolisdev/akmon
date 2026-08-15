@@ -1,10 +1,12 @@
 import express from 'express';
-import { getMonitorByToken, insertHeartbeat } from '../db.js';
+import { getMonitorByToken, insertHeartbeat, getLatestHeartbeat } from '../db.js';
+import { sendPushoverNotification } from '../pushover.js';
+import { sendEmailNotification } from '../email.js';
 
 const router = express.Router();
 
 // Agent Telemetry Ingestion Endpoint
-router.post('/agent', (req, res) => {
+router.post('/agent', async (req, res) => {
   try {
     const { token, load, ram_used, ram_total, disk_pct, php_ver, php_memory, os_info } = req.body;
 
@@ -17,6 +19,9 @@ router.post('/agent', (req, res) => {
       return res.status(404).json({ error: 'Invalid or unregistered agent token' });
     }
 
+    const previous = getLatestHeartbeat(monitor.id);
+    const previousStatus = previous ? previous.status : null;
+
     const metrics = {
       load: load || [0, 0, 0],
       ram_used: ram_used || 0,
@@ -28,13 +33,31 @@ router.post('/agent', (req, res) => {
       timestamp: new Date().toISOString()
     };
 
-    // Store Heartbeat
+    // Store UP Heartbeat
     insertHeartbeat({
       monitor_id: monitor.id,
       status: 1, // Agent push implies service is UP
       ping_ms: 0,
       msg: JSON.stringify(metrics)
     });
+
+    // Check for Restoration Alert (if agent was previously DOWN / Stale)
+    if (previousStatus === 0) {
+      const alertTitle = `[akMon] ${monitor.name} is UP (Restored)`;
+      const alertMsg = `Service: ${monitor.name}\nType: ${monitor.type}\nStatus: UP (Restored)\nDetails: Agent telemetry resumed successfully`;
+      const priority = monitor.pushover_priority !== undefined ? monitor.pushover_priority : 2;
+
+      sendPushoverNotification({
+        title: alertTitle,
+        message: alertMsg,
+        priority
+      }).catch((err) => console.error('[Pushover Dispatch Error]', err.message));
+
+      sendEmailNotification({
+        title: alertTitle,
+        message: alertMsg
+      }).catch((err) => console.error('[Email Dispatch Error]', err.message));
+    }
 
     // Emit Socket.IO Event if attached
     const io = req.app.get('io');

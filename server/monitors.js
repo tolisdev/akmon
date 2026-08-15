@@ -121,7 +121,8 @@ async function checkStaleAgents(monitor) {
   const lastTime = new Date(latest.created_at).getTime();
   const now = Date.now();
   const diffSec = (now - lastTime) / 1000;
-  const staleThresholdSec = (monitor.interval_sec || 60) * 2.5;
+  // Stale threshold: 2x check interval (minimum 90s)
+  const staleThresholdSec = Math.max((monitor.interval_sec || 60) * 2, 90);
 
   if (diffSec > staleThresholdSec && latest.status !== 0) {
     return {
