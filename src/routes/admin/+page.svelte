@@ -182,7 +182,13 @@
 			if (res.ok) {
 				const data = await res.json();
 				if (data.settings) {
-					settingsForm = { ...settingsForm, ...data.settings };
+					settingsForm = {
+						password_auth_enabled: 'true',
+						pushover_enabled: 'true',
+						smtp_enabled: 'false',
+						oidc_enabled: 'false',
+						...data.settings
+					};
 				}
 			}
 		} catch (e) {
@@ -967,7 +973,7 @@
 						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">Pushover Push Notifications</h4>
 						<label class="flex items-center gap-2 cursor-pointer text-zinc-300 text-[11px]">
 							<input type="checkbox" bind:checked={settingsForm.pushover_enabled} truevalue="true" falsevalue="false" />
-							<span>Enable Pushover</span>
+							<span class="text-emerald-400 font-bold">{settingsForm.pushover_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 
@@ -998,7 +1004,7 @@
 						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">SMTP Email Alerts</h4>
 						<label class="flex items-center gap-2 cursor-pointer text-zinc-300 text-[11px]">
 							<input type="checkbox" bind:checked={settingsForm.smtp_enabled} truevalue="true" falsevalue="false" />
-							<span>Enable Email</span>
+							<span class="text-emerald-400 font-bold">{settingsForm.smtp_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 
@@ -1051,7 +1057,7 @@
 						<h4 class="text-xs font-bold uppercase text-indigo-400 tracking-wide">PocketID OpenID Connect (OIDC)</h4>
 						<label class="flex items-center gap-2 cursor-pointer text-zinc-300 text-[11px]">
 							<input type="checkbox" bind:checked={settingsForm.oidc_enabled} truevalue="true" falsevalue="false" />
-							<span>Enable OIDC Login</span>
+							<span class="text-indigo-400 font-bold">{settingsForm.oidc_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
 						</label>
 					</div>
 

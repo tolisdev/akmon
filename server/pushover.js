@@ -1,14 +1,15 @@
-/**
- * Pushover Notification Helper for akMon
- * Reads credentials dynamically from SQLite settings table (or env fallback)
- */
 import { getSetting } from './db.js';
 
-export async function sendPushoverNotification({ title, message, priority = 0 }) {
+/**
+ * Pushover Alert Notification Handler
+ * Dynamic credentials from SQLite settings table or process.env
+ */
+
+export async function sendPushoverNotification({ title, message, priority = 1, sound = 'pushover' }) {
   const enabled = getSetting('pushover_enabled', 'true');
-  if (enabled === 'false') {
-    console.log(`[Pushover Skipped] Disabled in settings.`);
-    return { ok: false, reason: 'disabled' };
+  if (enabled !== 'true' && enabled !== true && enabled !== '1') {
+    console.log('[Pushover Skipped] Disabled in settings.');
+    return { ok: false, reason: 'Pushover notifications disabled in settings' };
   }
 
   const userKey = getSetting('pushover_user_key', process.env.PUSHOVER_USER_KEY || '');
@@ -16,40 +17,39 @@ export async function sendPushoverNotification({ title, message, priority = 0 })
 
   if (!userKey || !apiToken) {
     console.log(`[Pushover Skipped] Missing User Key or API Token in settings/env.`);
-    return { ok: false, reason: 'unconfigured' };
+    return { ok: false, reason: 'Missing User Key or API Token' };
   }
 
-  const payload = {
+  const params = new URLSearchParams({
     token: apiToken,
     user: userKey,
-    title: title || 'akMon Alert',
-    message: message || 'Monitor status change detected',
-    priority: Number(priority)
-  };
+    title,
+    message,
+    priority: String(priority),
+    sound
+  });
 
-  // Priority 2 (Emergency) requires retry and expire parameters
-  if (payload.priority === 2) {
-    payload.retry = 60;   // Re-send alert every 60 seconds
-    payload.expire = 3600; // Stop retrying after 1 hour (3600s)
+  if (Number(priority) === 2) {
+    params.set('retry', '60');
+    params.set('expire', '3600');
   }
 
   try {
     const res = await fetch('https://api.pushover.net/1/messages.json', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
     });
 
     const data = await res.json();
     if (res.ok && data.status === 1) {
       console.log(`[Pushover Sent] Priority ${priority} -> ${title}`);
       return { ok: true, data };
-    } else {
-      console.error('[Pushover Error Response]', data);
-      return { ok: false, error: data };
     }
+    console.warn(`[Pushover Error] API Response (${res.status}):`, data);
+    return { ok: false, reason: data.errors ? data.errors.join(', ') : 'API error', data };
   } catch (err) {
-    console.error('[Pushover Exception]', err.message);
-    return { ok: false, error: err.message };
+    console.error('[Pushover Network Error]', err.message);
+    return { ok: false, reason: err.message };
   }
 }

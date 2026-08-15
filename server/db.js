@@ -52,6 +52,12 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  INSERT OR IGNORE INTO settings (key, value) VALUES
+    ('password_auth_enabled', 'true'),
+    ('pushover_enabled', 'true'),
+    ('smtp_enabled', 'false'),
+    ('oidc_enabled', 'false');
 `);
 
 // Migration helper for existing DBs
