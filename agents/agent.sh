@@ -59,9 +59,9 @@ fi
 # Network Traffic (Rx / Tx in KB/s) via /proc/net/dev
 NET_RX_KBPS=0; NET_TX_KBPS=0
 if [ -f /proc/net/dev ]; then
-  NET1=$(awk 'NR>2 {if ($1 != "lo:") {rx+=$2; tx+=$10}} END {print rx,tx}' /proc/net/dev 2>/dev/null)
-  sleep 0.3
-  NET2=$(awk 'NR>2 {if ($1 != "lo:") {rx+=$2; tx+=$10}} END {print rx,tx}' /proc/net/dev 2>/dev/null)
+  NET1=$(sed 's/:/ /g' /proc/net/dev 2>/dev/null | awk 'NR>2 {if ($1 != "lo") {rx+=$2; tx+=$10}} END {print rx+0,tx+0}')
+  sleep 0.5
+  NET2=$(sed 's/:/ /g' /proc/net/dev 2>/dev/null | awk 'NR>2 {if ($1 != "lo") {rx+=$2; tx+=$10}} END {print rx+0,tx+0}')
   
   if [ -n "$NET1" ] && [ -n "$NET2" ]; then
     RX1=$(echo "$NET1" | awk '{print $1}')
@@ -69,8 +69,8 @@ if [ -f /proc/net/dev ]; then
     RX2=$(echo "$NET2" | awk '{print $1}')
     TX2=$(echo "$NET2" | awk '{print $2}')
     
-    DRX=$(( (RX2 - RX1) * 10 / 3 / 1024 ))
-    DTX=$(( (TX2 - TX1) * 10 / 3 / 1024 ))
+    DRX=$(( (RX2 - RX1) * 2 / 1024 ))
+    DTX=$(( (TX2 - TX1) * 2 / 1024 ))
     if [ "$DRX" -ge 0 ]; then NET_RX_KBPS=$DRX; fi
     if [ "$DTX" -ge 0 ]; then NET_TX_KBPS=$DTX; fi
   fi

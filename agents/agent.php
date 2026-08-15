@@ -44,26 +44,28 @@ if (@is_readable('/proc/stat')) {
 $netRxKbps = 0; $netTxKbps = 0;
 if (@is_readable('/proc/net/dev')) {
     $dev1 = @file('/proc/net/dev');
-    usleep(250000);
+    usleep(500000);
     $dev2 = @file('/proc/net/dev');
     if ($dev1 && $dev2) {
         $rx1 = 0; $tx1 = 0; $rx2 = 0; $tx2 = 0;
         for ($i = 2; $i < count($dev1); $i++) {
-            $n1 = preg_split('/\s+/', trim($dev1[$i]));
-            if (isset($n1[0]) && $n1[0] !== 'lo:') {
-                $rx1 += (int)($n1[1] ?? 0);
-                $tx1 += (int)($n1[9] ?? $n1[10] ?? 0);
+            $line1 = str_replace(':', ' ', trim($dev1[$i]));
+            $n1 = preg_split('/\s+/', $line1);
+            if (isset($n1[0]) && $n1[0] !== 'lo') {
+                $rx1 += (float)($n1[1] ?? 0);
+                $tx1 += (float)($n1[9] ?? 0);
             }
         }
         for ($i = 2; $i < count($dev2); $i++) {
-            $n2 = preg_split('/\s+/', trim($dev2[$i]));
-            if (isset($n2[0]) && $n2[0] !== 'lo:') {
-                $rx2 += (int)($n2[1] ?? 0);
-                $tx2 += (int)($n2[9] ?? $n2[10] ?? 0);
+            $line2 = str_replace(':', ' ', trim($dev2[$i]));
+            $n2 = preg_split('/\s+/', $line2);
+            if (isset($n2[0]) && $n2[0] !== 'lo') {
+                $rx2 += (float)($n2[1] ?? 0);
+                $tx2 += (float)($n2[9] ?? 0);
             }
         }
-        $netRxKbps = max(0, round(($rx2 - $rx1) * 4 / 1024, 1));
-        $netTxKbps = max(0, round(($tx2 - $tx1) * 4 / 1024, 1));
+        $netRxKbps = max(0, round(($rx2 - $rx1) * 2 / 1024, 1));
+        $netTxKbps = max(0, round(($tx2 - $tx1) * 2 / 1024, 1));
     }
 }
 
