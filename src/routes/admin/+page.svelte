@@ -397,6 +397,109 @@
 		}
 	}
 
+	// Custom Client Status Pages State
+	let showStatusPagesModal = $state(false);
+	let statusPagesTab = $state('create');
+	let statusPagesList = $state([]);
+	let newPageTitle = $state('');
+	let selectedMonitorIdsForPage = $state([]);
+	let statusPageCreateError = $state('');
+	let statusPageCopiedId = $state(null);
+
+	async function loadStatusPages() {
+		try {
+			const res = await fetch('/api/v1/status-pages', {
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			if (res.ok) {
+				const data = await res.json();
+				statusPagesList = data.pages || [];
+			}
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	function openStatusPagesModal() {
+		newPageTitle = '';
+		selectedMonitorIdsForPage = monitors.map((m) => m.id);
+		statusPageCreateError = '';
+		statusPagesTab = 'create';
+		showStatusPagesModal = true;
+		loadStatusPages();
+	}
+
+	function toggleMonitorSelectionForPage(id) {
+		if (selectedMonitorIdsForPage.includes(id)) {
+			selectedMonitorIdsForPage = selectedMonitorIdsForPage.filter((mId) => mId !== id);
+		} else {
+			selectedMonitorIdsForPage = [...selectedMonitorIdsForPage, id];
+		}
+	}
+
+	async function createClientStatusPage() {
+		statusPageCreateError = '';
+		if (!newPageTitle.trim()) {
+			statusPageCreateError = 'Please enter a title for the client status page';
+			return;
+		}
+		if (selectedMonitorIdsForPage.length === 0) {
+			statusPageCreateError = 'Please select at least one monitor to include';
+			return;
+		}
+
+		try {
+			const res = await fetch('/api/v1/status-pages', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${authToken}`
+				},
+				body: JSON.stringify({
+					title: newPageTitle.trim(),
+					monitor_ids: selectedMonitorIdsForPage
+				})
+			});
+			const data = await res.json();
+			if (res.ok && data.page) {
+				newPageTitle = '';
+				loadStatusPages();
+				statusPagesTab = 'manage';
+			} else {
+				statusPageCreateError = data.error || 'Failed to create custom status page';
+			}
+		} catch (e) {
+			statusPageCreateError = e.message || 'Request error';
+		}
+	}
+
+	async function deleteClientStatusPage(id) {
+		if (!confirm('Are you sure you want to delete this custom client status page? The link sent to clients will be revoked immediately.')) return;
+		try {
+			await fetch(`/api/v1/status-pages/${id}`, {
+				method: 'DELETE',
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			loadStatusPages();
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	function getCustomPageUrl(pageId) {
+		const origin = typeof window !== 'undefined' ? window.location.origin : 'http://your-vps-ip:3000';
+		return `${origin}/status-page/${pageId}`;
+	}
+
+	function copyCustomPageUrl(pageId) {
+		const url = getCustomPageUrl(pageId);
+		if (navigator.clipboard) {
+			navigator.clipboard.writeText(url);
+			statusPageCopiedId = pageId;
+			setTimeout(() => (statusPageCopiedId = null), 2500);
+		}
+	}
+
 	async function saveSettings() {
 		settingsMessage = '';
 		settingsError = '';
@@ -756,6 +859,12 @@
 
 			<div class="flex items-center gap-3">
 				<button
+					onclick={openStatusPagesModal}
+					class="px-3 py-1.5 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 rounded text-xs flex items-center gap-1.5 transition-colors font-mono shadow"
+				>
+					<span>🔗</span> Share Client Page
+				</button>
+				<button
 					onclick={openSettingsModal}
 					class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded text-xs flex items-center gap-1.5 transition-colors font-mono"
 				>
@@ -808,7 +917,15 @@
 		<div class="rounded-xl bg-[#18181b] border border-[#27272a] shadow-sm">
 			<div class="px-5 py-4 border-b border-[#27272a] flex items-center justify-between">
 				<h2 class="text-sm font-semibold text-white tracking-wide">Monitors & Services</h2>
-				<span class="text-xs font-mono text-zinc-400">{monitors.length} Active Services</span>
+				<div class="flex items-center gap-3">
+					<span class="text-xs font-mono text-zinc-400">{monitors.length} Active Services</span>
+					<button
+						onclick={openStatusPagesModal}
+						class="px-3 py-1 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 rounded text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow"
+					>
+						<span>🔗</span> Share Custom Client Page
+					</button>
+				</div>
 			</div>
 
 			<div class="overflow-x-auto">
@@ -1817,6 +1934,146 @@
 					Close Analytics
 				</button>
 			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Custom Client Status Pages Modal -->
+{#if showStatusPagesModal}
+	<div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+		<div class="bg-[#18181b] border border-[#27272a] rounded-xl max-w-2xl w-full p-6 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+			<div class="flex items-center justify-between border-b border-[#27272a] pb-4">
+				<div class="flex items-center gap-2">
+					<span class="text-xl">🔗</span>
+					<div>
+						<h3 class="text-lg font-bold text-white">Custom Client Status Pages</h3>
+						<p class="text-xs text-zinc-400 font-mono">Create shareable status pages with selected public & private monitors</p>
+					</div>
+				</div>
+				<button onclick={() => (showStatusPagesModal = false)} class="text-zinc-400 hover:text-white text-lg">✕</button>
+			</div>
+
+			<!-- Tabs -->
+			<div class="flex border-b border-zinc-800 gap-4 text-xs font-mono">
+				<button
+					onclick={() => (statusPagesTab = 'create')}
+					class="pb-2 border-b-2 transition-colors {statusPagesTab === 'create' ? 'border-emerald-500 text-emerald-400 font-bold' : 'border-transparent text-zinc-400 hover:text-white'}"
+				>
+					✨ Create New Client Link
+				</button>
+				<button
+					onclick={() => { statusPagesTab = 'manage'; loadStatusPages(); }}
+					class="pb-2 border-b-2 transition-colors {statusPagesTab === 'manage' ? 'border-emerald-500 text-emerald-400 font-bold' : 'border-transparent text-zinc-400 hover:text-white'}"
+				>
+					📋 Existing Client Pages ({statusPagesList.length})
+				</button>
+			</div>
+
+			{#if statusPagesTab === 'create'}
+				<div class="space-y-4">
+					{#if statusPageCreateError}
+						<div class="p-3 bg-rose-950/80 border border-rose-500/40 text-rose-300 rounded text-xs font-mono">
+							⚠️ {statusPageCreateError}
+						</div>
+					{/if}
+
+					<div>
+						<label for="page-title-input" class="block text-xs font-mono text-zinc-400 mb-1">CLIENT PAGE TITLE</label>
+						<input
+							id="page-title-input"
+							type="text"
+							bind:value={newPageTitle}
+							placeholder="e.g. Acme Corp Infrastructure Status"
+							class="w-full px-3 py-2 bg-[#09090b] border border-zinc-700 rounded text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
+						/>
+					</div>
+
+					<div class="space-y-2">
+						<div class="flex items-center justify-between">
+							<span class="block text-xs font-mono text-zinc-400">SELECT MONITORS TO INCLUDE (PUBLIC & PRIVATE)</span>
+							<div class="flex gap-2 text-[10px] font-mono">
+								<button type="button" onclick={() => (selectedMonitorIdsForPage = monitors.map(m => m.id))} class="text-emerald-400 hover:underline">Select All</button>
+								<span class="text-zinc-600">|</span>
+								<button type="button" onclick={() => (selectedMonitorIdsForPage = [])} class="text-zinc-400 hover:underline">Deselect All</button>
+							</div>
+						</div>
+
+						<div class="max-h-60 overflow-y-auto border border-zinc-800 rounded bg-[#09090b] divide-y divide-zinc-800/60">
+							{#each monitors as m}
+								<label class="flex items-center justify-between p-2.5 hover:bg-zinc-800/50 cursor-pointer text-xs font-mono">
+									<div class="flex items-center gap-3">
+										<input
+											type="checkbox"
+											checked={selectedMonitorIdsForPage.includes(m.id)}
+											onchange={() => toggleMonitorSelectionForPage(m.id)}
+											class="w-4 h-4 accent-emerald-500 cursor-pointer"
+										/>
+										<span class="text-white font-bold">{m.name}</span>
+										<span class="text-[10px] text-zinc-500">({m.group_name || 'Default'})</span>
+									</div>
+									<span class="px-2 py-0.5 rounded text-[10px] font-bold {m.is_public !== 0 ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400 border border-zinc-700'}">
+										{m.is_public !== 0 ? '🌐 Public' : '🔒 Private'}
+									</span>
+								</label>
+							{/each}
+						</div>
+					</div>
+
+					<div class="flex justify-end gap-2 pt-2">
+						<button onclick={() => (showStatusPagesModal = false)} class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs font-semibold">
+							Cancel
+						</button>
+						<button onclick={createClientStatusPage} class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-black font-bold rounded text-xs">
+							✨ Generate Client Link (64-Char Token)
+						</button>
+					</div>
+				</div>
+			{:else}
+				<!-- Manage Tab -->
+				<div class="space-y-4">
+					{#if statusPagesList.length === 0}
+						<div class="p-8 text-center text-zinc-500 font-mono text-xs border border-dashed border-zinc-800 rounded">
+							No custom status pages created yet. Click "✨ Create New Client Link" above.
+						</div>
+					{:else}
+						<div class="space-y-3">
+							{#each statusPagesList as p}
+								<div class="p-4 bg-[#09090b] border border-zinc-800 rounded-lg space-y-3">
+									<div class="flex items-center justify-between">
+										<div>
+											<h4 class="text-sm font-bold text-white">{p.title}</h4>
+											<p class="text-[10px] text-zinc-400 font-mono">
+												Includes {p.monitor_ids.length} monitors • Created {formatRelativeTime(p.created_at)}
+											</p>
+										</div>
+										<button
+											onclick={() => deleteClientStatusPage(p.id)}
+											class="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/40 text-rose-300 text-[11px] rounded font-mono transition-colors"
+										>
+											🗑️ Revoke Link
+										</button>
+									</div>
+
+									<div class="flex items-center gap-2">
+										<input
+											type="text"
+											readonly
+											value={getCustomPageUrl(p.id)}
+											class="w-full px-3 py-1.5 bg-[#18181b] border border-zinc-700 rounded text-emerald-400 font-mono text-xs select-all focus:outline-none"
+										/>
+										<button
+											onclick={() => copyCustomPageUrl(p.id)}
+											class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-black font-bold rounded text-xs whitespace-nowrap flex-shrink-0 transition-colors"
+										>
+											{statusPageCopiedId === p.id ? '✅ Copied!' : '📋 Copy URL'}
+										</button>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

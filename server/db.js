@@ -50,6 +50,13 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_hb_monitor_date ON heartbeats(monitor_id, created_at);
 
+  CREATE TABLE IF NOT EXISTS status_pages (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    monitor_ids TEXT NOT NULL,
+    created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -318,4 +325,41 @@ export function regenerateStatusAccessToken() {
   const newToken = crypto.randomBytes(32).toString('hex');
   setSettings({ status_access_token: newToken });
   return newToken;
+}
+
+// Prepared Statements for Status Pages
+const stmtGetAllStatusPages = db.prepare('SELECT * FROM status_pages ORDER BY created_at DESC');
+const stmtGetStatusPageById = db.prepare('SELECT * FROM status_pages WHERE id = ?');
+const stmtInsertStatusPage = db.prepare(`
+  INSERT INTO status_pages (id, title, monitor_ids, created_at)
+  VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+`);
+const stmtDeleteStatusPage = db.prepare('DELETE FROM status_pages WHERE id = ?');
+
+export function createStatusPage({ id, title, monitor_ids }) {
+  const jsonIds = typeof monitor_ids === 'string' ? monitor_ids : JSON.stringify(monitor_ids);
+  stmtInsertStatusPage.run(id, title, jsonIds);
+  return getStatusPageById(id);
+}
+
+export function getAllStatusPages() {
+  return stmtGetAllStatusPages.all().map((sp) => ({
+    ...sp,
+    monitor_ids: JSON.parse(sp.monitor_ids || '[]'),
+    created_at: formatUtcIso(sp.created_at)
+  }));
+}
+
+export function getStatusPageById(id) {
+  const sp = stmtGetStatusPageById.get(id);
+  if (!sp) return null;
+  return {
+    ...sp,
+    monitor_ids: JSON.parse(sp.monitor_ids || '[]'),
+    created_at: formatUtcIso(sp.created_at)
+  };
+}
+
+export function deleteStatusPage(id) {
+  return stmtDeleteStatusPage.run(id);
 }

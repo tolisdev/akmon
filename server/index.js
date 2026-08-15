@@ -24,7 +24,11 @@ import {
   getSetting,
   deleteHeartbeatsForMonitor,
   getStatusAccessToken,
-  regenerateStatusAccessToken
+  regenerateStatusAccessToken,
+  getAllStatusPages,
+  getStatusPageById,
+  createStatusPage,
+  deleteStatusPage
 } from './db.js';
 
 import { startMonitoringDaemon } from './monitors.js';
@@ -250,6 +254,111 @@ app.post('/api/v1/settings/share-token/regenerate', checkAdminAuth, (req, res) =
     res.json({ token });
   } catch (err) {
     res.status(500).json({ error: 'Failed to regenerate share token' });
+  }
+});
+
+// Admin Custom Status Pages APIs
+app.get('/api/v1/status-pages', checkAdminAuth, (req, res) => {
+  try {
+    const pages = getAllStatusPages();
+    res.json({ pages });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch status pages' });
+  }
+});
+
+app.post('/api/v1/status-pages', checkAdminAuth, (req, res) => {
+  try {
+    const { title, monitor_ids } = req.body || {};
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Page title is required' });
+    }
+    if (!Array.isArray(monitor_ids) || monitor_ids.length === 0) {
+      return res.status(400).json({ error: 'At least one monitor must be selected' });
+    }
+
+    const id = crypto.randomBytes(32).toString('hex'); // 64-character token!
+    const page = createStatusPage({
+      id,
+      title: title.trim().substring(0, 100),
+      monitor_ids
+    });
+
+    res.json({ ok: true, page });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create custom status page' });
+  }
+});
+
+app.delete('/api/v1/status-pages/:id', checkAdminAuth, (req, res) => {
+  try {
+    deleteStatusPage(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete status page' });
+  }
+});
+
+// Public Custom Status Page API
+app.get('/api/v1/public/status-page/:id', (req, res) => {
+  try {
+    const pageToken = req.params.id || '';
+    const page = getStatusPageById(pageToken);
+    if (!page) {
+      return res.status(404).json({ error: 'Custom status page not found or link expired' });
+    }
+
+    const allowedIds = new Set(page.monitor_ids || []);
+    const monitors = getAllMonitors().filter((m) => (m.active === 1 || m.active === 2) && allowedIds.has(m.id));
+
+    const publicData = monitors.map((m) => {
+      const isMaintenance = m.active === 2;
+      const latest = getLatestHeartbeat(m.id);
+      const recent = getRecentHeartbeats(m.id, 60);
+      const stats = getMonitorStats(m.id);
+
+      const segments = [];
+      const totalDesired = 60;
+      const missingCount = totalDesired - recent.length;
+
+      for (let i = 0; i < missingCount; i++) {
+        segments.push({ status: -1, ping_ms: 0, time: null });
+      }
+
+      for (let i = 0; i < recent.length; i++) {
+        segments.push({
+          status: recent[i].status,
+          ping_ms: recent[i].ping_ms,
+          time: recent[i].created_at
+        });
+      }
+
+      return {
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        group_name: m.group_name || 'Default',
+        url: m.url,
+        ssl_days: m.ssl_days,
+        ssl_issuer: m.ssl_issuer,
+        in_maintenance: isMaintenance,
+        status: isMaintenance ? 3 : (latest ? latest.status : 0),
+        ping_ms: latest ? latest.ping_ms : 0,
+        last_check: latest ? latest.created_at : null,
+        uptime_pct: stats.uptimePct,
+        segments
+      };
+    });
+
+    const logoUrl = getSetting('logo_url', '');
+    res.json({
+      id: page.id,
+      title: page.title,
+      logo_url: logoUrl,
+      monitors: publicData
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch status page data' });
   }
 });
 
