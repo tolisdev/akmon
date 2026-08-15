@@ -74,8 +74,20 @@ app.get('/agents/agent.php', (req, res) => {
 // Ingest API
 app.use('/api/v1', agentRouter);
 
+// Public Auth Configuration Options (Unprotected)
+app.get('/api/v1/auth/options', (req, res) => {
+  const pwdEnabled = getSetting('password_auth_enabled', process.env.DISABLE_PASSWORD_AUTH === 'true' ? 'false' : 'true') !== 'false';
+  const oidcEnabled = getSetting('oidc_enabled', process.env.OIDC_ENABLED || 'false') === 'true';
+  res.json({ password_auth_enabled: pwdEnabled, oidc_enabled: oidcEnabled });
+});
+
 // Authentication Route (Standard Password)
 app.post('/api/v1/auth/login', (req, res) => {
+  const pwdEnabled = getSetting('password_auth_enabled', process.env.DISABLE_PASSWORD_AUTH === 'true' ? 'false' : 'true') !== 'false';
+  if (!pwdEnabled) {
+    return res.status(403).json({ ok: false, error: 'Password authentication is disabled by the administrator. Log in with PocketID.' });
+  }
+
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
     const sessionToken = crypto.createHash('sha256').update(ADMIN_PASSWORD + '_akmon_salt').digest('hex');

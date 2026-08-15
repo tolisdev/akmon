@@ -7,6 +7,8 @@
 	let authError = $state('');
 	let authToken = $state('');
 
+	let authOptions = $state({ password_auth_enabled: true, oidc_enabled: false });
+
 	let monitors = $state([]);
 	let loading = $state(true);
 	let showModal = $state(false);
@@ -22,6 +24,7 @@
 	let testStatus = $state({ pushover: '', email: '' });
 
 	let settingsForm = $state({
+		password_auth_enabled: 'true',
 		pushover_enabled: 'true',
 		pushover_user_key: '',
 		pushover_api_token: '',
@@ -83,6 +86,18 @@
 		return points.join(' ');
 	}
 
+	async function fetchAuthOptions() {
+		try {
+			const res = await fetch('/api/v1/auth/options');
+			if (res.ok) {
+				const data = await res.json();
+				authOptions = data;
+			}
+		} catch (e) {
+			console.error('Failed to fetch auth options', e);
+		}
+	}
+
 	async function login() {
 		authError = '';
 		try {
@@ -109,6 +124,7 @@
 		authToken = '';
 		localStorage.removeItem('akmon_auth_token');
 		authenticated = false;
+		fetchAuthOptions();
 	}
 
 	async function loadMonitors() {
@@ -119,6 +135,7 @@
 			});
 			if (res.status === 401) {
 				authenticated = false;
+				fetchAuthOptions();
 				return;
 			}
 			const data = await res.json();
@@ -168,6 +185,7 @@
 			});
 			if (res.ok) {
 				settingsMessage = 'Settings saved successfully!';
+				fetchAuthOptions();
 			} else {
 				settingsError = 'Failed to save settings';
 			}
@@ -199,6 +217,7 @@
 	}
 
 	onMount(() => {
+		fetchAuthOptions();
 		const savedToken = localStorage.getItem('akmon_auth_token');
 		if (savedToken) {
 			authToken = savedToken;
@@ -363,37 +382,43 @@
 				</div>
 			</div>
 
-			<form onsubmit={(e) => { e.preventDefault(); login(); }} class="space-y-4">
-				{#if authError}
-					<div class="p-2.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-mono">
-						{authError}
+			{#if authOptions.password_auth_enabled}
+				<form onsubmit={(e) => { e.preventDefault(); login(); }} class="space-y-4">
+					{#if authError}
+						<div class="p-2.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-mono">
+							{authError}
+						</div>
+					{/if}
+
+					<div>
+						<label for="admin-pass" class="block text-xs font-mono text-zinc-400 mb-1">ADMIN PASSWORD</label>
+						<input
+							id="admin-pass"
+							type="password"
+							bind:value={passwordInput}
+							placeholder="Enter password..."
+							class="w-full px-3 py-2 bg-[#09090b] border border-zinc-700 rounded text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
+						/>
 					</div>
-				{/if}
 
-				<div>
-					<label for="admin-pass" class="block text-xs font-mono text-zinc-400 mb-1">ADMIN PASSWORD</label>
-					<input
-						id="admin-pass"
-						type="password"
-						bind:value={passwordInput}
-						placeholder="Enter password..."
-						class="w-full px-3 py-2 bg-[#09090b] border border-zinc-700 rounded text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
-					/>
+					<button
+						type="submit"
+						class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-black font-semibold rounded text-xs uppercase tracking-wider transition-colors"
+					>
+						Authenticate
+					</button>
+				</form>
+
+				<div class="relative flex py-1 items-center">
+					<div class="flex-grow border-t border-zinc-800"></div>
+					<span class="flex-shrink mx-3 text-[10px] font-mono text-zinc-500 uppercase">OR OIDC</span>
+					<div class="flex-grow border-t border-zinc-800"></div>
 				</div>
-
-				<button
-					type="submit"
-					class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-black font-semibold rounded text-xs uppercase tracking-wider transition-colors"
-				>
-					Authenticate
-				</button>
-			</form>
-
-			<div class="relative flex py-1 items-center">
-				<div class="flex-grow border-t border-zinc-800"></div>
-				<span class="flex-shrink mx-3 text-[10px] font-mono text-zinc-500 uppercase">OR OIDC</span>
-				<div class="flex-grow border-t border-zinc-800"></div>
-			</div>
+			{:else}
+				<div class="p-3 rounded bg-amber-950/40 border border-amber-500/30 text-amber-300 text-xs font-mono text-center">
+					🔒 Password authentication is disabled. Please authenticate via PocketID OIDC below.
+				</div>
+			{/if}
 
 			<!-- PocketID OIDC Button -->
 			<a
@@ -514,7 +539,7 @@
 												<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> DEGRADED
 											</span>
 										{:else}
-											<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/30 text-rose-400 text-[10px] font-bold">
+											<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-400 text-[10px] font-bold">
 												<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> DOWN
 											</span>
 										{/if}
@@ -841,7 +866,7 @@
 		<div class="w-full max-w-2xl bg-[#18181b] border border-[#27272a] p-6 rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto space-y-6">
 			<div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
 				<h3 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
-					<span>⚙️</span> Notification Channels & OIDC Settings
+					<span>⚙️</span> System Settings & Authentication
 				</h3>
 				<button onclick={() => (showSettingsModal = false)} class="text-zinc-500 hover:text-white">✕</button>
 			</div>
@@ -858,7 +883,23 @@
 			{/if}
 
 			<div class="space-y-6 text-xs font-mono">
-				<!-- Section 1: Pushover Configuration -->
+				<!-- Section 1: Security & Authentication Options -->
+				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
+					<h4 class="text-xs font-bold uppercase text-amber-400 tracking-wide">Security & Login Methods</h4>
+					
+					<div class="flex items-center justify-between p-2.5 rounded bg-[#18181b] border border-zinc-700">
+						<div>
+							<span class="block text-zinc-200 font-semibold">Standard Password Authentication</span>
+							<span class="text-[10px] text-zinc-400">Allow logging in via standard admin password</span>
+						</div>
+						<label class="flex items-center gap-2 cursor-pointer">
+							<input type="checkbox" bind:checked={settingsForm.password_auth_enabled} truevalue="true" falsevalue="false" />
+							<span class="text-emerald-400 font-bold">{settingsForm.password_auth_enabled === 'true' ? 'ENABLED' : 'DISABLED'}</span>
+						</label>
+					</div>
+				</section>
+
+				<!-- Section 2: Pushover Configuration -->
 				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">Pushover Push Notifications</h4>
@@ -889,7 +930,7 @@
 					</div>
 				</section>
 
-				<!-- Section 2: Email / SMTP Configuration -->
+				<!-- Section 3: Email / SMTP Configuration -->
 				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold uppercase text-emerald-400 tracking-wide">SMTP Email Alerts</h4>
@@ -942,7 +983,7 @@
 					</div>
 				</section>
 
-				<!-- Section 3: PocketID OIDC Configuration -->
+				<!-- Section 4: PocketID OIDC Configuration -->
 				<section class="p-4 rounded-lg bg-[#09090b] border border-zinc-800 space-y-3">
 					<div class="flex items-center justify-between">
 						<h4 class="text-xs font-bold uppercase text-indigo-400 tracking-wide">PocketID OpenID Connect (OIDC)</h4>
