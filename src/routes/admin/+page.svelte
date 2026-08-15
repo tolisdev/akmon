@@ -8,6 +8,7 @@
 	let authToken = $state('');
 
 	let authOptions = $state({ password_auth_enabled: true, oidc_enabled: false, logo_url: '' });
+	let adminLogoLoaded = $state(false);
 
 	let monitors = $state([]);
 	let loading = $state(true);
@@ -486,13 +487,30 @@
 	<div class="min-h-screen flex items-center justify-center p-4">
 		<div class="w-full max-w-sm bg-[#18181b] border border-[#27272a] p-6 rounded-xl shadow-2xl space-y-6">
 			<div class="flex items-center gap-3">
-				{#if authOptions.logo_url && authOptions.logo_url.trim() !== ''}
-					<img src={authOptions.logo_url} alt="Logo" class="h-8 w-auto max-w-[140px] object-contain rounded" />
-				{:else}
-					<div class="w-8 h-8 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono text-xs font-bold">
-						AK
-					</div>
-				{/if}
+				<!-- Zero-Shift Preloader Logo Container -->
+				<div class="relative flex items-center min-w-[32px] h-8">
+					{#if authOptions.logo_url && !adminLogoLoaded}
+						<div class="animate-pulse bg-zinc-800/80 border border-zinc-700/50 rounded w-24 h-8 flex items-center justify-center text-[9px] font-mono text-zinc-400 px-1.5">
+							<span class="inline-block animate-spin w-2.5 h-2.5 border border-emerald-500 border-t-transparent rounded-full mr-1 flex-shrink-0"></span>
+							<span>Loading...</span>
+						</div>
+					{/if}
+
+					{#if authOptions.logo_url && authOptions.logo_url.trim() !== ''}
+						<img
+							src={authOptions.logo_url}
+							alt="Logo"
+							onload={() => (adminLogoLoaded = true)}
+							onerror={() => (adminLogoLoaded = true)}
+							class="h-8 w-auto max-w-[140px] object-contain rounded transition-opacity duration-300 {adminLogoLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0 pointer-events-none'}"
+						/>
+					{:else}
+						<div class="w-8 h-8 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono text-xs font-bold flex-shrink-0">
+							AK
+						</div>
+					{/if}
+				</div>
+
 				<div>
 					<h2 class="text-base font-bold text-white tracking-wide">Admin Dashboard</h2>
 					<p class="text-xs text-zinc-400">akMon System Management</p>

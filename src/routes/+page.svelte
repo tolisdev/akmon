@@ -5,6 +5,7 @@
 	let loading = $state(true);
 	let error = $state(null);
 	let activeTab = $state('all');
+	let logoLoaded = $state(false);
 
 	// Group Monitors by section
 	let groups = $derived.by(() => {
@@ -85,13 +86,30 @@
 	<header class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
-				{#if statusData.logo_url && statusData.logo_url.trim() !== ''}
-					<img src={statusData.logo_url} alt="Logo" class="h-10 w-auto max-w-[180px] object-contain rounded-lg" />
-				{:else}
-					<div class="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono font-bold">
-						AK
-					</div>
-				{/if}
+				<!-- Zero-Shift Preloader Logo Container -->
+				<div class="relative flex items-center min-w-[40px] h-10">
+					{#if loading || (statusData.logo_url && !logoLoaded)}
+						<div class="animate-pulse bg-zinc-800/80 border border-zinc-700/50 rounded-lg w-28 h-10 flex items-center justify-center text-[10px] font-mono text-zinc-400 px-2">
+							<span class="inline-block animate-spin w-3 h-3 border border-emerald-500 border-t-transparent rounded-full mr-1.5 flex-shrink-0"></span>
+							<span>Loading...</span>
+						</div>
+					{/if}
+
+					{#if statusData.logo_url && statusData.logo_url.trim() !== ''}
+						<img
+							src={statusData.logo_url}
+							alt="Logo"
+							onload={() => (logoLoaded = true)}
+							onerror={() => (logoLoaded = true)}
+							class="h-10 w-auto max-w-[180px] object-contain rounded-lg transition-opacity duration-300 {logoLoaded ? 'opacity-100' : 'opacity-0 absolute inset-0 pointer-events-none'}"
+						/>
+					{:else if !loading}
+						<div class="w-10 h-10 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono font-bold flex-shrink-0">
+							AK
+						</div>
+					{/if}
+				</div>
+
 				<div>
 					<h1 class="text-xl font-bold text-white tracking-wide">Infrastructure Status</h1>
 					<p class="text-xs text-zinc-400 font-mono">Uptime & Performance Monitoring</p>
