@@ -14,6 +14,7 @@ import {
   deleteMonitor,
   toggleMonitor,
   toggleMaintenance,
+  toggleVisibility,
   getRecentHeartbeats,
   getLatestHeartbeat,
   getMonitorStats,
@@ -214,7 +215,7 @@ app.post('/api/v1/notifications/test', checkAdminAuth, async (req, res) => {
 // Public Status API (Sanitized & Grouped - 60 segment chronological order)
 app.get('/api/v1/public/status', (req, res) => {
   try {
-    const monitors = getAllMonitors().filter((m) => m.active === 1 || m.active === 2);
+    const monitors = getAllMonitors().filter((m) => (m.active === 1 || m.active === 2) && m.is_public !== 0);
     const publicData = monitors.map((m) => {
       const isMaintenance = m.active === 2;
       const latest = getLatestHeartbeat(m.id);
@@ -299,7 +300,7 @@ app.get('/api/v1/monitors', checkAdminAuth, (req, res) => {
 
 app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
   try {
-    const { name, type, url, keyword, interval_sec, pushover_priority, group_name } = req.body;
+    const { name, type, url, keyword, interval_sec, pushover_priority, group_name, is_public } = req.body;
     if (!name || !type) {
       return res.status(400).json({ error: 'Name and type are required' });
     }
@@ -320,7 +321,8 @@ app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
       token,
       active: 1,
       pushover_priority: pushover_priority !== undefined ? parseInt(pushover_priority, 10) : (type === 'http' ? 1 : 2),
-      group_name: group_name || 'Default'
+      group_name: group_name || 'Default',
+      is_public: is_public !== undefined ? (is_public ? 1 : 0) : 1
     });
 
     res.json({ monitor: newMonitor });
@@ -331,7 +333,7 @@ app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
 
 app.put('/api/v1/monitors/:id', checkAdminAuth, (req, res) => {
   try {
-    const { name, type, url, keyword, interval_sec, active, pushover_priority, group_name } = req.body;
+    const { name, type, url, keyword, interval_sec, active, pushover_priority, group_name, is_public } = req.body;
     const updated = updateMonitor({
       id: req.params.id,
       name,
@@ -341,7 +343,8 @@ app.put('/api/v1/monitors/:id', checkAdminAuth, (req, res) => {
       interval_sec: parseInt(interval_sec, 10) || 60,
       active: active !== undefined ? (active ? 1 : 0) : 1,
       pushover_priority: pushover_priority !== undefined ? parseInt(pushover_priority, 10) : 0,
-      group_name: group_name || 'Default'
+      group_name: group_name || 'Default',
+      is_public: is_public !== undefined ? (is_public ? 1 : 0) : 1
     });
     res.json({ monitor: updated });
   } catch (err) {
@@ -361,6 +364,15 @@ app.post('/api/v1/monitors/:id/toggle', checkAdminAuth, (req, res) => {
 app.post('/api/v1/monitors/:id/maintenance', checkAdminAuth, (req, res) => {
   try {
     const updated = toggleMaintenance(req.params.id);
+    res.json({ monitor: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/monitors/:id/visibility', checkAdminAuth, (req, res) => {
+  try {
+    const updated = toggleVisibility(req.params.id);
     res.json({ monitor: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });

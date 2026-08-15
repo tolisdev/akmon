@@ -33,6 +33,7 @@ db.exec(`
     token TEXT UNIQUE,
     active INTEGER DEFAULT 1,
     pushover_priority INTEGER DEFAULT 1,
+    is_public INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   );
 
@@ -70,6 +71,10 @@ try {
   if (!hasGroup) {
     db.exec("ALTER TABLE monitors ADD COLUMN group_name TEXT DEFAULT 'Default';");
   }
+  const hasIsPublic = columns.some((col) => col.name === 'is_public');
+  if (!hasIsPublic) {
+    db.exec("ALTER TABLE monitors ADD COLUMN is_public INTEGER DEFAULT 1;");
+  }
 } catch (e) {
   // Ignore migration errors
 }
@@ -92,12 +97,12 @@ const stmtGetAllMonitors = db.prepare('SELECT * FROM monitors ORDER BY name ASC'
 const stmtGetMonitorById = db.prepare('SELECT * FROM monitors WHERE id = ?');
 const stmtGetMonitorByToken = db.prepare('SELECT * FROM monitors WHERE token = ?');
 const stmtInsertMonitor = db.prepare(`
-  INSERT INTO monitors (id, name, type, group_name, url, keyword, interval_sec, token, active, pushover_priority, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  INSERT INTO monitors (id, name, type, group_name, url, keyword, interval_sec, token, active, pushover_priority, is_public, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 `);
 const stmtUpdateMonitor = db.prepare(`
   UPDATE monitors
-  SET name = ?, type = ?, group_name = ?, url = ?, keyword = ?, interval_sec = ?, active = ?, pushover_priority = ?
+  SET name = ?, type = ?, group_name = ?, url = ?, keyword = ?, interval_sec = ?, active = ?, pushover_priority = ?, is_public = ?
   WHERE id = ?
 `);
 const stmtToggleMonitor = db.prepare(`
@@ -105,6 +110,9 @@ const stmtToggleMonitor = db.prepare(`
 `);
 const stmtToggleMaintenance = db.prepare(`
   UPDATE monitors SET active = CASE WHEN active = 2 THEN 1 ELSE 2 END WHERE id = ?
+`);
+const stmtToggleVisibility = db.prepare(`
+  UPDATE monitors SET is_public = CASE WHEN is_public = 1 THEN 0 ELSE 1 END WHERE id = ?
 `);
 const stmtDeleteMonitor = db.prepare('DELETE FROM monitors WHERE id = ?');
 
@@ -114,32 +122,33 @@ const stmtInsertHeartbeat = db.prepare(`
   VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 `);
 const stmtGetRecentHeartbeats = db.prepare(`
-  SELECT id, monitor_id, status, ping_ms, msg, created_at
-  FROM heartbeats
-  WHERE monitor_id = ?
-  ORDER BY created_at DESC
-  LIMIT ?
+  SELECT * FROM (
+    SELECT * FROM heartbeats
+    WHERE monitor_id = ?
+    ORDER BY id DESC
+    LIMIT ?
+  ) ORDER BY id ASC
 `);
 const stmtGetLatestHeartbeat = db.prepare(`
-  SELECT id, monitor_id, status, ping_ms, msg, created_at
-  FROM heartbeats
+  SELECT * FROM heartbeats
   WHERE monitor_id = ?
-  ORDER BY created_at DESC
+  ORDER BY id DESC
   LIMIT 1
 `);
-const stmtDeleteHeartbeatsByMonitor = db.prepare(`
-  DELETE FROM heartbeats WHERE monitor_id = ?
-`);
-const stmtPruneOldHeartbeats = db.prepare(`
-  DELETE FROM heartbeats WHERE created_at < datetime('now', '-90 days')
-`);
-
-const stmtStats = db.prepare(`
-  SELECT
+const stmtGetMonitorStats = db.prepare(`
+  SELECT 
     COUNT(*) as total,
     SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as up_count,
-    AVG(CASE WHEN ping_ms > 0 THEN ping_ms ELSE NULL END) as avg_ping
+    AVG(CASE WHEN status = 1 THEN ping_ms ELSE NULL END) as avg_ping
   FROM heartbeats
+  WHERE monitor_id = ?
+`);
+const stmtCleanupOldHeartbeats = db.prepare(`
+  DELETE FROM heartbeats
+  WHERE created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')
+`);
+const stmtDeleteHeartbeatsForMonitor = db.prepare(`
+  DELETE FROM heartbeats
   WHERE monitor_id = ?
 `);
 
@@ -180,7 +189,8 @@ export function createMonitor(data) {
     data.interval_sec || 60,
     data.token || null,
     data.active !== undefined ? data.active : 1,
-    data.pushover_priority !== undefined ? data.pushover_priority : 1
+    data.pushover_priority !== undefined ? data.pushover_priority : 1,
+    data.is_public !== undefined ? (data.is_public ? 1 : 0) : 1
   );
   return getMonitorById(data.id);
 }
@@ -195,6 +205,7 @@ export function updateMonitor(data) {
     data.interval_sec || 60,
     data.active !== undefined ? data.active : 1,
     data.pushover_priority !== undefined ? data.pushover_priority : 1,
+    data.is_public !== undefined ? (data.is_public ? 1 : 0) : 1,
     data.id
   );
   return getMonitorById(data.id);
@@ -207,6 +218,11 @@ export function toggleMonitor(id) {
 
 export function toggleMaintenance(id) {
   stmtToggleMaintenance.run(id);
+  return getMonitorById(id);
+}
+
+export function toggleVisibility(id) {
+  stmtToggleVisibility.run(id);
   return getMonitorById(id);
 }
 
@@ -224,10 +240,9 @@ export function insertHeartbeat(data) {
 }
 
 export function getRecentHeartbeats(monitorId, limit = 60) {
-  const rows = stmtGetRecentHeartbeats.all(monitorId, limit).reverse();
-  return rows.map((r) => ({
-    ...r,
-    created_at: formatUtcIso(r.created_at)
+  return stmtGetRecentHeartbeats.all(monitorId, limit).map((hb) => ({
+    ...hb,
+    created_at: formatUtcIso(hb.created_at)
   }));
 }
 
@@ -236,25 +251,22 @@ export function getLatestHeartbeat(monitorId) {
   return hb ? { ...hb, created_at: formatUtcIso(hb.created_at) } : null;
 }
 
-export function deleteHeartbeatsForMonitor(monitorId) {
-  return stmtDeleteHeartbeatsByMonitor.run(monitorId);
-}
-
 export function getMonitorStats(monitorId) {
-  const row = stmtStats.get(monitorId);
-  const total = row ? row.total : 0;
-  const upCount = row ? row.up_count : 0;
-  const uptimePct = total > 0 ? Number(Math.round((upCount / total) * 100 + 'e1') + 'e-1') : 100;
-  const avgPing = row && row.avg_ping ? Math.round(row.avg_ping) : 0;
-
+  const row = stmtGetMonitorStats.get(monitorId);
+  if (!row || row.total === 0) {
+    return { uptimePct: 100, avgPing: 0 };
+  }
+  const uptimePct = Math.round((row.up_count / row.total) * 1000) / 10;
+  const avgPing = Math.round(row.avg_ping || 0);
   return { uptimePct, avgPing };
 }
 
 export function cleanupOldHeartbeats() {
-  const result = stmtPruneOldHeartbeats.run();
-  if (result.changes > 0) {
-    console.log(`[DB Cleanup] Pruned ${result.changes} old heartbeats (>90 days).`);
-  }
+  return stmtCleanupOldHeartbeats.run();
+}
+
+export function deleteHeartbeatsForMonitor(monitorId) {
+  return stmtDeleteHeartbeatsForMonitor.run(monitorId);
 }
 
 export function getSetting(key, defaultValue = '') {
@@ -264,16 +276,15 @@ export function getSetting(key, defaultValue = '') {
 
 export function getAllSettings() {
   const rows = stmtGetAllSettings.all();
-  const map = {};
+  const settings = {};
   for (const r of rows) {
-    map[r.key] = r.value;
+    settings[r.key] = r.value;
   }
-  return map;
+  return settings;
 }
 
-export function setSettings(settingsMap) {
-  for (const [key, value] of Object.entries(settingsMap)) {
+export function setSettings(settingsObj) {
+  for (const [key, value] of Object.entries(settingsObj)) {
     stmtSetSetting.run(key, String(value));
   }
-  return getAllSettings();
 }

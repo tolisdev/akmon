@@ -59,6 +59,7 @@
 	let formKeyword = $state('');
 	let formInterval = $state(60);
 	let formPushoverPriority = $state(1);
+	let formIsPublic = $state(true);
 	let formError = $state('');
 
 	function parseDate(dateStr) {
@@ -364,6 +365,7 @@
 		formKeyword = '';
 		formInterval = 60;
 		formPushoverPriority = 1;
+		formIsPublic = true;
 		formError = '';
 		showModal = true;
 	}
@@ -377,6 +379,7 @@
 		formKeyword = m.keyword || '';
 		formInterval = m.interval_sec || 60;
 		formPushoverPriority = m.pushover_priority !== undefined ? m.pushover_priority : (m.type === 'http' ? 1 : 2);
+		formIsPublic = m.is_public !== 0;
 		formError = '';
 		activeMenuId = null;
 		showModal = true;
@@ -396,7 +399,8 @@
 			url: formUrl,
 			keyword: formKeyword,
 			interval_sec: parseInt(formInterval, 10),
-			pushover_priority: parseInt(formPushoverPriority, 10)
+			pushover_priority: parseInt(formPushoverPriority, 10),
+			is_public: formIsPublic ? 1 : 0
 		};
 
 		try {
@@ -441,6 +445,19 @@
 		activeMenuId = null;
 		try {
 			await fetch(`/api/v1/monitors/${m.id}/maintenance`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${authToken}` }
+			});
+			loadMonitors();
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	async function toggleVisibilityMode(m) {
+		activeMenuId = null;
+		try {
+			await fetch(`/api/v1/monitors/${m.id}/visibility`, {
 				method: 'POST',
 				headers: { Authorization: `Bearer ${authToken}` }
 			});
@@ -703,7 +720,12 @@
 
 									<!-- Name & Target -->
 									<td class="py-3 px-4">
-										<div class="font-semibold text-white font-sans">{m.name}</div>
+										<div class="font-semibold text-white font-sans flex items-center gap-1.5">
+											{m.name}
+											{#if m.is_public === 0}
+												<span class="px-1.5 py-0.5 text-[9px] font-mono rounded bg-zinc-800 border border-zinc-700 text-zinc-400 font-bold" title="Hidden from Public Status Page">🔒 PRIVATE</span>
+											{/if}
+										</div>
 										<div class="text-[11px] text-zinc-500 truncate max-w-xs">{m.url || 'Agent Ingestion'}</div>
 									</td>
 
@@ -821,6 +843,13 @@
 						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-amber-300 text-xs flex items-center gap-2 transition-colors font-mono"
 					>
 						<span>🛠️</span> {activeMonitor.active === 2 ? 'Exit Maintenance' : 'Set Maintenance'}
+					</button>
+
+					<button
+						onclick={() => toggleVisibilityMode(activeMonitor)}
+						class="w-full px-3 py-1.5 text-left hover:bg-zinc-800 text-zinc-300 text-xs flex items-center gap-2 transition-colors font-mono"
+					>
+						<span>{activeMonitor.is_public === 0 ? '👁️' : '🔒'}</span> {activeMonitor.is_public === 0 ? 'Make Public' : 'Make Private'}
 					</button>
 
 					<button
@@ -1043,6 +1072,14 @@
 						max="3600"
 						class="w-full px-3 py-2 bg-[#09090b] border border-zinc-700 rounded text-white focus:outline-none focus:border-emerald-500"
 					/>
+				</div>
+
+				<div class="flex items-center justify-between p-2.5 rounded bg-[#09090b] border border-zinc-700 mt-2">
+					<div>
+						<span class="block text-zinc-200 font-semibold">👁️ Show on Public Status Page</span>
+						<span class="text-[10px] text-zinc-400">If unchecked, monitor stays private in Admin only</span>
+					</div>
+					<input type="checkbox" bind:checked={formIsPublic} class="w-4 h-4 accent-emerald-500 cursor-pointer" />
 				</div>
 			</div>
 
