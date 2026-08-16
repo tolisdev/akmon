@@ -35,6 +35,9 @@ db.exec(`
     active INTEGER DEFAULT 1,
     pushover_priority INTEGER DEFAULT 1,
     is_public INTEGER DEFAULT 1,
+    max_retries INTEGER DEFAULT 3,
+    consecutive_fails INTEGER DEFAULT 0,
+    last_alerted_status INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   );
 
@@ -91,6 +94,18 @@ try {
   if (!hasSslIssuer) {
     db.exec("ALTER TABLE monitors ADD COLUMN ssl_issuer TEXT;");
   }
+  const hasMaxRetries = columns.some((col) => col.name === 'max_retries');
+  if (!hasMaxRetries) {
+    db.exec("ALTER TABLE monitors ADD COLUMN max_retries INTEGER DEFAULT 3;");
+  }
+  const hasConsecutiveFails = columns.some((col) => col.name === 'consecutive_fails');
+  if (!hasConsecutiveFails) {
+    db.exec("ALTER TABLE monitors ADD COLUMN consecutive_fails INTEGER DEFAULT 0;");
+  }
+  const hasLastAlertedStatus = columns.some((col) => col.name === 'last_alerted_status');
+  if (!hasLastAlertedStatus) {
+    db.exec("ALTER TABLE monitors ADD COLUMN last_alerted_status INTEGER DEFAULT 1;");
+  }
 } catch (e) {
   // Ignore migration errors
 }
@@ -113,13 +128,16 @@ const stmtGetAllMonitors = db.prepare('SELECT * FROM monitors ORDER BY name ASC'
 const stmtGetMonitorById = db.prepare('SELECT * FROM monitors WHERE id = ?');
 const stmtGetMonitorByToken = db.prepare('SELECT * FROM monitors WHERE token = ?');
 const stmtInsertMonitor = db.prepare(`
-  INSERT INTO monitors (id, name, type, group_name, url, keyword, interval_sec, token, active, pushover_priority, is_public, created_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  INSERT INTO monitors (id, name, type, group_name, url, keyword, interval_sec, max_retries, consecutive_fails, last_alerted_status, token, active, pushover_priority, is_public, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 `);
 const stmtUpdateMonitor = db.prepare(`
   UPDATE monitors
-  SET name = ?, type = ?, group_name = ?, url = ?, keyword = ?, interval_sec = ?, active = ?, pushover_priority = ?, is_public = ?
+  SET name = ?, type = ?, group_name = ?, url = ?, keyword = ?, interval_sec = ?, max_retries = ?, active = ?, pushover_priority = ?, is_public = ?
   WHERE id = ?
+`);
+const stmtUpdateMonitorFailState = db.prepare(`
+  UPDATE monitors SET consecutive_fails = ?, last_alerted_status = ? WHERE id = ?
 `);
 const stmtToggleMonitor = db.prepare(`
   UPDATE monitors SET active = CASE WHEN active = 1 THEN 0 ELSE 1 END WHERE id = ?
@@ -206,6 +224,7 @@ export function createMonitor(data) {
     data.url || '',
     data.keyword || '',
     data.interval_sec || 60,
+    data.max_retries !== undefined ? parseInt(data.max_retries, 10) : 3,
     data.token || null,
     data.active !== undefined ? data.active : 1,
     data.pushover_priority !== undefined ? data.pushover_priority : 1,
@@ -222,12 +241,17 @@ export function updateMonitor(data) {
     data.url || '',
     data.keyword || '',
     data.interval_sec || 60,
+    data.max_retries !== undefined ? parseInt(data.max_retries, 10) : 3,
     data.active !== undefined ? data.active : 1,
     data.pushover_priority !== undefined ? data.pushover_priority : 1,
     data.is_public !== undefined ? (data.is_public ? 1 : 0) : 1,
     data.id
   );
   return getMonitorById(data.id);
+}
+
+export function updateMonitorFailState(id, consecutiveFails, lastAlertedStatus) {
+  stmtUpdateMonitorFailState.run(consecutiveFails, lastAlertedStatus !== undefined ? lastAlertedStatus : 1, id);
 }
 
 export function toggleMonitor(id) {

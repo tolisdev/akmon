@@ -149,6 +149,7 @@
 	let formUrl = $state('');
 	let formKeyword = $state('');
 	let formInterval = $state(60);
+	let formMaxRetries = $state(3);
 	let formPushoverPriority = $state(1);
 	let formIsPublic = $state(true);
 	let formError = $state('');
@@ -611,6 +612,7 @@
 		formUrl = 'https://';
 		formKeyword = '';
 		formInterval = 60;
+		formMaxRetries = 3;
 		formPushoverPriority = 1;
 		formIsPublic = true;
 		formError = '';
@@ -625,6 +627,7 @@
 		formUrl = m.url || '';
 		formKeyword = m.keyword || '';
 		formInterval = m.interval_sec || 60;
+		formMaxRetries = m.max_retries !== undefined && m.max_retries !== null ? m.max_retries : 3;
 		formPushoverPriority = m.pushover_priority !== undefined ? m.pushover_priority : (m.type === 'http' ? 1 : 2);
 		formIsPublic = m.is_public !== 0;
 		formError = '';
@@ -646,6 +649,7 @@
 			url: formUrl,
 			keyword: formKeyword,
 			interval_sec: parseInt(formInterval, 10),
+			max_retries: parseInt(formMaxRetries, 10),
 			pushover_priority: parseInt(formPushoverPriority, 10),
 			is_public: formIsPublic ? 1 : 0
 		};
@@ -1479,6 +1483,21 @@
 						max="3600"
 						class="w-full px-3 py-2 bg-[#09090b] border border-zinc-700 rounded text-white focus:outline-none focus:border-emerald-500"
 					/>
+				</div>
+
+				<div>
+					<label for="mon-retries" class="block text-zinc-400 mb-1">🔄 FAILED RETRIES BEFORE ALERT THRESHOLD</label>
+					<input
+						id="mon-retries"
+						type="number"
+						bind:value={formMaxRetries}
+						min="1"
+						max="20"
+						class="w-full px-3 py-2 bg-[#09090b] border border-zinc-700 rounded text-white focus:outline-none focus:border-emerald-500 font-mono"
+					/>
+					<p class="text-[10px] text-zinc-500 mt-1 font-mono">
+						Fails ≤ retries set status to <strong class="text-amber-400">DEGRADED (Silent)</strong>. Fails &gt; retries send <strong class="text-rose-400">OFFLINE Alerts</strong>. Single OK check recovers to UP.
+					</p>
 				</div>
 
 				<div class="flex items-center justify-between p-2.5 rounded bg-[#09090b] border border-zinc-700 mt-2">

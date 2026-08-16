@@ -460,7 +460,7 @@ app.get('/api/v1/monitors', checkAdminAuth, (req, res) => {
 
 const VALID_MONITOR_TYPES = ['http', 'ping', 'agent_linux', 'agent_php'];
 
-function validateMonitorInput({ name, type, url, interval_sec }) {
+function validateMonitorInput({ name, type, url, interval_sec, max_retries }) {
   if (!name || typeof name !== 'string' || !name.trim()) {
     return 'Name is required';
   }
@@ -491,14 +491,20 @@ function validateMonitorInput({ name, type, url, interval_sec }) {
       return 'Interval must be between 5 and 86400 seconds';
     }
   }
+  if (max_retries !== undefined && max_retries !== null) {
+    const parsedRetries = parseInt(max_retries, 10);
+    if (isNaN(parsedRetries) || parsedRetries < 1 || parsedRetries > 20) {
+      return 'Max retries must be between 1 and 20';
+    }
+  }
   return null;
 }
 
 app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
   try {
-    const { name, type, url, keyword, interval_sec, pushover_priority, group_name, is_public } = req.body || {};
+    const { name, type, url, keyword, interval_sec, max_retries, pushover_priority, group_name, is_public } = req.body || {};
     
-    const validationError = validateMonitorInput({ name, type, url, interval_sec });
+    const validationError = validateMonitorInput({ name, type, url, interval_sec, max_retries });
     if (validationError) {
       return res.status(400).json({ error: validationError });
     }
@@ -520,6 +526,7 @@ app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
       url: (url || '').trim(),
       keyword: cleanKeyword,
       interval_sec: parseInt(interval_sec, 10) || 60,
+      max_retries: max_retries !== undefined ? parseInt(max_retries, 10) : 3,
       token,
       active: 1,
       pushover_priority: pushover_priority !== undefined ? parseInt(pushover_priority, 10) : (type === 'http' ? 1 : 2),
@@ -535,9 +542,9 @@ app.post('/api/v1/monitors', checkAdminAuth, (req, res) => {
 
 app.put('/api/v1/monitors/:id', checkAdminAuth, (req, res) => {
   try {
-    const { name, type, url, keyword, interval_sec, active, pushover_priority, group_name, is_public } = req.body || {};
+    const { name, type, url, keyword, interval_sec, max_retries, active, pushover_priority, group_name, is_public } = req.body || {};
     
-    const validationError = validateMonitorInput({ name, type, url, interval_sec });
+    const validationError = validateMonitorInput({ name, type, url, interval_sec, max_retries });
     if (validationError) {
       return res.status(400).json({ error: validationError });
     }
@@ -553,6 +560,7 @@ app.put('/api/v1/monitors/:id', checkAdminAuth, (req, res) => {
       url: (url || '').trim(),
       keyword: cleanKeyword,
       interval_sec: parseInt(interval_sec, 10) || 60,
+      max_retries: max_retries !== undefined ? parseInt(max_retries, 10) : 3,
       active: active !== undefined ? (active ? 1 : 0) : 1,
       pushover_priority: pushover_priority !== undefined ? parseInt(pushover_priority, 10) : 0,
       group_name: cleanGroup,

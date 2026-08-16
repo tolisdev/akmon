@@ -1,7 +1,7 @@
 import ping from 'ping';
 import tls from 'tls';
 import { URL } from 'url';
-import { getAllMonitors, insertHeartbeat, getLatestHeartbeat, getSetting, updateMonitorSsl } from './db.js';
+import { getAllMonitors, insertHeartbeat, getLatestHeartbeat, getSetting, updateMonitorSsl, updateMonitorFailState } from './db.js';
 import { sendPushoverNotification } from './pushover.js';
 import { sendEmailNotification } from './email.js';
 
@@ -228,18 +228,61 @@ export function startMonitoringDaemon(io) {
         }
 
         if (result) {
-          const previousStatus = latest ? latest.status : null;
+          const rawStatus = result.status; // 1 = OK, 0 = FAIL, 2 = DEGRADED
+          const maxRetries = m.max_retries !== undefined && m.max_retries !== null ? parseInt(m.max_retries, 10) : 3;
+          let currentFails = m.consecutive_fails || 0;
+          let lastAlertedStatus = m.last_alerted_status !== undefined && m.last_alerted_status !== null ? m.last_alerted_status : 1;
+          let finalStatus = rawStatus;
+
+          if (rawStatus === 1) {
+            // A single OKAY ping / check is enough for full recovery!
+            currentFails = 0;
+            finalStatus = 1;
+
+            // Trigger recovery notification if monitor was previously alerted as DOWN (0)
+            if (lastAlertedStatus === 0) {
+              const prio = m.pushover_priority !== undefined ? m.pushover_priority : 1;
+              const title = `✅ [RESTORED] ${m.name} is UP!`;
+              const msg = `Service "${m.name}" (${m.url}) has recovered.\nLatency: ${result.ping_ms}ms\nTime: ${new Date().toLocaleString()}`;
+              sendPushoverNotification({ title, message: msg, priority: prio });
+              sendEmailNotification({ title, message: msg });
+              lastAlertedStatus = 1;
+            }
+          } else {
+            // Check failed (HTTP error, ping timeout, or stale agent)
+            currentFails += 1;
+
+            if (currentFails <= maxRetries) {
+              // Status set to DEGRADED (2) with NO notification sent!
+              finalStatus = 2;
+            } else {
+              // Failed checks > maxRetries: Status set to DOWN (0) and send alert notification!
+              finalStatus = 0;
+
+              if (lastAlertedStatus !== 0) {
+                const prio = m.pushover_priority !== undefined ? m.pushover_priority : 1;
+                const title = `🚨 [DOWN] ${m.name} is OFFLINE!`;
+                const msg = `Service "${m.name}" (${m.url}) check failed ${currentFails} times consecutively (Max retries: ${maxRetries}).\nError: ${result.msg}\nTime: ${new Date().toLocaleString()}`;
+                sendPushoverNotification({ title, message: msg, priority: prio });
+                sendEmailNotification({ title, message: msg });
+                lastAlertedStatus = 0;
+              }
+            }
+          }
+
+          // Persist failure count and alerted state to DB
+          updateMonitorFailState(m.id, currentFails, lastAlertedStatus);
 
           insertHeartbeat({
             monitor_id: m.id,
-            status: result.status,
+            status: finalStatus,
             ping_ms: result.ping_ms,
-            msg: result.msg
+            msg: currentFails > 0 && finalStatus === 2 ? `[Degraded Check ${currentFails}/${maxRetries}] ${result.msg}` : result.msg
           });
 
           const heartbeatPayload = {
             monitor_id: m.id,
-            status: result.status,
+            status: finalStatus,
             ping_ms: result.ping_ms,
             msg: result.msg,
             created_at: new Date().toISOString(),
@@ -248,22 +291,6 @@ export function startMonitoringDaemon(io) {
           };
 
           io.emit('heartbeat', heartbeatPayload);
-
-          // Status Change Alert Triggers
-          if (previousStatus !== null && previousStatus !== result.status) {
-            const prio = m.pushover_priority !== undefined ? m.pushover_priority : 1;
-            if (result.status === 0) {
-              const title = `🚨 [DOWN] ${m.name} is OFFLINE!`;
-              const msg = `Service "${m.name}" (${m.url}) check failed.\nError: ${result.msg}\nTime: ${new Date().toLocaleString()}`;
-              sendPushoverNotification({ title, message: msg, priority: prio });
-              sendEmailNotification({ title, message: msg });
-            } else if (result.status === 1) {
-              const title = `✅ [RESTORED] ${m.name} is UP!`;
-              const msg = `Service "${m.name}" (${m.url}) has recovered.\nLatency: ${result.ping_ms}ms\nTime: ${new Date().toLocaleString()}`;
-              sendPushoverNotification({ title, message: msg, priority: prio });
-              sendEmailNotification({ title, message: msg });
-            }
-          }
         }
       }
     } catch (err) {
