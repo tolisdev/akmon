@@ -34,14 +34,33 @@ import {
 import { startMonitoringDaemon } from './monitors.js';
 import agentRouter from './api/agent.js';
 import { sendPushoverNotification } from './pushover.js';
-import { sendEmailNotification } from './email.js';
 import { getOidcAuthUrl, processOidcCallback } from './oidc.js';
+import { createRateLimiter, BruteForceTracker, getClientIp } from './rateLimiter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+
+// Security Rate Limiters & Token Brute-Force Trackers
+const globalPublicRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: 'Too many public status requests. Please slow down.'
+});
+
+const tokenBruteForceTracker = new BruteForceTracker({
+  maxFails: 10,
+  windowMs: 15 * 60 * 1000,
+  blockDurationMs: 15 * 60 * 1000
+});
+
+const adminAuthBruteForceTracker = new BruteForceTracker({
+  maxFails: 5,
+  windowMs: 15 * 60 * 1000,
+  blockDurationMs: 15 * 60 * 1000
+});
 
 const app = express();
 const httpServer = createServer(app);
@@ -117,8 +136,15 @@ app.get('/api/v1/auth/options', (req, res) => {
   }
 });
 
-// Authentication Route (Standard Password)
+// Authentication Route (Standard Password with 5-Fail Brute-Force Lock)
 app.post('/api/v1/auth/login', (req, res) => {
+  const clientIp = getClientIp(req);
+  if (adminAuthBruteForceTracker.isBlocked(clientIp)) {
+    const retrySec = adminAuthBruteForceTracker.getBlockTimeRemainingSec(clientIp);
+    res.setHeader('Retry-After', retrySec);
+    return res.status(429).json({ ok: false, error: `Account login temporarily blocked due to 5 consecutive failed attempts. Retry in ${retrySec} seconds.` });
+  }
+
   const pwdEnabled = getSetting('password_auth_enabled', process.env.DISABLE_PASSWORD_AUTH === 'true' ? 'false' : 'true') !== 'false';
   if (!pwdEnabled) {
     return res.status(403).json({ ok: false, error: 'Password authentication is disabled by the administrator. Log in with PocketID.' });
@@ -126,9 +152,12 @@ app.post('/api/v1/auth/login', (req, res) => {
 
   const { password } = req.body || {};
   if (timingSafeEqualStr(password, ADMIN_PASSWORD)) {
+    adminAuthBruteForceTracker.reset(clientIp);
     const sessionToken = crypto.createHash('sha256').update(ADMIN_PASSWORD + '_akmon_salt').digest('hex');
     return res.json({ ok: true, token: sessionToken });
   }
+
+  adminAuthBruteForceTracker.recordFail(clientIp);
   return res.status(401).json({ ok: false, error: 'Invalid password' });
 });
 
@@ -300,13 +329,23 @@ app.delete('/api/v1/status-pages/:id', checkAdminAuth, (req, res) => {
 });
 
 // Public Custom Status Page API
-app.get('/api/v1/public/status-page/:id', (req, res) => {
+app.get('/api/v1/public/status-page/:id', globalPublicRateLimiter, (req, res) => {
+  const clientIp = getClientIp(req);
+  if (tokenBruteForceTracker.isBlocked(clientIp)) {
+    const retrySec = tokenBruteForceTracker.getBlockTimeRemainingSec(clientIp);
+    res.setHeader('Retry-After', retrySec);
+    return res.status(429).json({ error: `Access blocked due to token brute-force detection. Retry in ${retrySec} seconds.` });
+  }
+
   try {
     const pageToken = req.params.id || '';
     const page = getStatusPageById(pageToken);
     if (!page) {
+      tokenBruteForceTracker.recordFail(clientIp);
       return res.status(404).json({ error: 'Custom status page not found or link expired' });
     }
+
+    tokenBruteForceTracker.reset(clientIp);
 
     const allowedIds = new Set(page.monitor_ids || []);
     const monitors = getAllMonitors().filter((m) => (m.active === 1 || m.active === 2) && allowedIds.has(m.id));
@@ -363,11 +402,24 @@ app.get('/api/v1/public/status-page/:id', (req, res) => {
 });
 
 // Public Status API (Sanitized & Grouped - 60 segment chronological order)
-app.get('/api/v1/public/status', (req, res) => {
+app.get('/api/v1/public/status', globalPublicRateLimiter, (req, res) => {
+  const clientIp = getClientIp(req);
+  if (tokenBruteForceTracker.isBlocked(clientIp)) {
+    const retrySec = tokenBruteForceTracker.getBlockTimeRemainingSec(clientIp);
+    res.setHeader('Retry-After', retrySec);
+    return res.status(429).json({ error: `Access blocked due to secret token brute-force detection. Retry in ${retrySec} seconds.` });
+  }
+
   try {
     const requestToken = req.query.token || '';
     const statusAccessToken = getStatusAccessToken();
     const isSecretTokenValid = timingSafeEqualStr(requestToken, statusAccessToken);
+
+    if (requestToken && !isSecretTokenValid) {
+      tokenBruteForceTracker.recordFail(clientIp);
+    } else if (requestToken && isSecretTokenValid) {
+      tokenBruteForceTracker.reset(clientIp);
+    }
 
     const monitors = getAllMonitors().filter((m) => {
       if (m.active !== 1 && m.active !== 2) return false;

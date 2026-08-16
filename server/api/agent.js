@@ -1,12 +1,28 @@
-import express from 'express';
-import { getMonitorByToken, insertHeartbeat, getLatestHeartbeat } from '../db.js';
-import { sendPushoverNotification } from '../pushover.js';
-import { sendEmailNotification } from '../email.js';
+import { createRateLimiter, BruteForceTracker, getClientIp } from '../rateLimiter.js';
 
 const router = express.Router();
 
+const agentRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: 'Too many agent pushes from this IP, rate limit exceeded.'
+});
+
+const agentBruteForceTracker = new BruteForceTracker({
+  maxFails: 15,
+  windowMs: 15 * 60 * 1000,
+  blockDurationMs: 15 * 60 * 1000
+});
+
 // Agent Telemetry Ingestion Endpoint
-router.post('/agent', async (req, res) => {
+router.post('/agent', agentRateLimiter, async (req, res) => {
+  const clientIp = getClientIp(req);
+  if (agentBruteForceTracker.isBlocked(clientIp)) {
+    const retrySec = agentBruteForceTracker.getBlockTimeRemainingSec(clientIp);
+    res.setHeader('Retry-After', retrySec);
+    return res.status(429).json({ error: `Access blocked due to invalid agent token brute-force detection. Retry in ${retrySec} seconds.` });
+  }
+
   try {
     const {
       token,
@@ -29,13 +45,17 @@ router.post('/agent', async (req, res) => {
     } = req.body || {};
 
     if (!token) {
+      agentBruteForceTracker.recordFail(clientIp);
       return res.status(400).json({ error: 'Token is required' });
     }
 
     const monitor = getMonitorByToken(token);
     if (!monitor) {
+      agentBruteForceTracker.recordFail(clientIp);
       return res.status(404).json({ error: 'Invalid or unregistered agent token' });
     }
+
+    agentBruteForceTracker.reset(clientIp);
 
     const previous = getLatestHeartbeat(monitor.id);
     const previousStatus = previous ? previous.status : null;
