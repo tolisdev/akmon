@@ -25,6 +25,71 @@
 	let showTelemetryModal = $state(false);
 	let selectedTelemetryMonitor = $state(null);
 
+	// Table Search & Sort State
+	let searchQuery = $state('');
+	let sortColumn = $state('name');
+	let sortDirection = $state('asc');
+
+	let filteredMonitors = $derived.by(() => {
+		let list = [...monitors];
+
+		if (searchQuery.trim()) {
+			const q = searchQuery.toLowerCase().trim();
+			list = list.filter((m) =>
+				(m.name || '').toLowerCase().includes(q) ||
+				(m.url || '').toLowerCase().includes(q) ||
+				(m.group_name || '').toLowerCase().includes(q) ||
+				(m.type || '').toLowerCase().includes(q) ||
+				(m.keyword || '').toLowerCase().includes(q)
+			);
+		}
+
+		list.sort((a, b) => {
+			let valA, valB;
+			if (sortColumn === 'status') {
+				const getStatusWeight = (m) => {
+					if (m.active === 2) return 3;
+					if (m.active === 0) return 4;
+					if (m.latest_status === 0) return 0;
+					if (m.latest_status === 2) return 1;
+					return 2;
+				};
+				valA = getStatusWeight(a);
+				valB = getStatusWeight(b);
+			} else if (sortColumn === 'name') {
+				valA = (a.name || '').toLowerCase();
+				valB = (b.name || '').toLowerCase();
+			} else if (sortColumn === 'group') {
+				valA = (a.group_name || 'Default').toLowerCase();
+				valB = (b.group_name || 'Default').toLowerCase();
+			} else if (sortColumn === 'type') {
+				valA = (a.type || '').toLowerCase();
+				valB = (b.type || '').toLowerCase();
+			} else if (sortColumn === 'latency') {
+				valA = a.latest_ping || 0;
+				valB = b.latest_ping || 0;
+			} else if (sortColumn === 'uptime') {
+				valA = a.uptime_pct !== undefined ? a.uptime_pct : 0;
+				valB = b.uptime_pct !== undefined ? b.uptime_pct : 0;
+			}
+
+			if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+
+		return list;
+	});
+
+	function toggleSort(column) {
+		if (sortColumn === column) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortColumn = column;
+			sortDirection = 'asc';
+		}
+	}
+
 	function openTelemetryModal(m) {
 		if (!m) return;
 		selectedTelemetryMonitor = m;
@@ -930,15 +995,37 @@
 
 		<!-- High Density Monitors Table -->
 		<div class="rounded-xl bg-[#18181b] border border-[#27272a] shadow-sm">
-			<div class="px-5 py-4 border-b border-[#27272a] flex items-center justify-between">
-				<h2 class="text-sm font-semibold text-white tracking-wide">Monitors & Services</h2>
+			<div class="px-5 py-4 border-b border-[#27272a] flex flex-col md:flex-row md:items-center justify-between gap-3">
 				<div class="flex items-center gap-3">
-					<span class="text-xs font-mono text-zinc-400">{monitors.length} Active Services</span>
+					<h2 class="text-sm font-semibold text-white tracking-wide">Monitors & Services</h2>
+					<span class="text-xs font-mono text-zinc-400">({filteredMonitors.length} / {monitors.length})</span>
+				</div>
+
+				<div class="flex items-center gap-3 flex-wrap">
+					<!-- Search Input -->
+					<div class="relative w-full sm:w-64">
+						<span class="absolute inset-y-0 left-0 pl-2.5 flex items-center text-zinc-500 text-xs">🔍</span>
+						<input
+							type="text"
+							bind:value={searchQuery}
+							placeholder="Search name, URL, group..."
+							class="w-full pl-8 pr-8 py-1.5 bg-[#09090b] border border-zinc-700 rounded-lg text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+						/>
+						{#if searchQuery}
+							<button
+								onclick={() => (searchQuery = '')}
+								class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-zinc-400 hover:text-white text-xs"
+							>
+								✕
+							</button>
+						{/if}
+					</div>
+
 					<button
 						onclick={openStatusPagesModal}
-						class="px-3 py-1 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 rounded text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow"
+						class="px-3 py-1.5 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow"
 					>
-						<span>🔗</span> Share Custom Client Page
+						<span>🔗</span> Share Client Page
 					</button>
 				</div>
 			</div>
@@ -947,10 +1034,12 @@
 			<div class="block md:hidden divide-y divide-[#27272a]/80">
 				{#if loading}
 					<div class="p-8 text-center text-zinc-500 font-mono text-xs">Loading monitor telemetry...</div>
-				{:else if monitors.length === 0}
-					<div class="p-8 text-center text-zinc-500 font-mono text-xs">No monitors configured yet. Click "+ Add Monitor" above.</div>
+				{:else if filteredMonitors.length === 0}
+					<div class="p-8 text-center text-zinc-500 font-mono text-xs">
+						{searchQuery ? 'No monitors matching search query.' : 'No monitors configured yet. Click "+ Add Monitor" above.'}
+					</div>
 				{:else}
-					{#each monitors as m (m.id)}
+					{#each filteredMonitors as m (m.id)}
 						<div class="p-4 space-y-3 hover:bg-zinc-800/20 transition-colors">
 							<div class="flex items-start justify-between gap-2">
 								<div class="space-y-1">
@@ -1011,31 +1100,45 @@
 			<div class="hidden md:block overflow-x-auto">
 				<table class="w-full text-left border-collapse">
 					<thead>
-						<tr class="bg-[#09090b]/50 border-b border-[#27272a] text-[11px] font-mono text-zinc-400 uppercase">
-							<th class="py-3 px-4">Status</th>
-							<th class="py-3 px-4">Name / Target</th>
-							<th class="py-3 px-4">Group</th>
-							<th class="py-3 px-4">Type</th>
+						<tr class="bg-[#09090b]/50 border-b border-[#27272a] text-[11px] font-mono text-zinc-400 uppercase select-none">
+							<th class="py-3 px-4 cursor-pointer hover:text-white transition-colors" onclick={() => toggleSort('status')}>
+								Status {sortColumn === 'status' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+							</th>
+							<th class="py-3 px-4 cursor-pointer hover:text-white transition-colors" onclick={() => toggleSort('name')}>
+								Name / Target {sortColumn === 'name' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+							</th>
+							<th class="py-3 px-4 cursor-pointer hover:text-white transition-colors" onclick={() => toggleSort('group')}>
+								Group {sortColumn === 'group' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+							</th>
+							<th class="py-3 px-4 cursor-pointer hover:text-white transition-colors" onclick={() => toggleSort('type')}>
+								Type {sortColumn === 'type' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+							</th>
 							<th class="py-3 px-4 text-center">SSL</th>
-							<th class="py-3 px-4">Last Check / Ping</th>
+							<th class="py-3 px-4">Last Check</th>
 							<th class="py-3 px-4 text-center">Prio</th>
-							<th class="py-3 px-4">Latency</th>
+							<th class="py-3 px-4 cursor-pointer hover:text-white transition-colors" onclick={() => toggleSort('latency')}>
+								Latency {sortColumn === 'latency' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+							</th>
 							<th class="py-3 px-4">Latency Trend</th>
-							<th class="py-3 px-4">Uptime</th>
+							<th class="py-3 px-4 cursor-pointer hover:text-white transition-colors" onclick={() => toggleSort('uptime')}>
+								Uptime {sortColumn === 'uptime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+							</th>
 							<th class="py-3 px-4 text-right">Actions</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-[#27272a]/60 text-xs font-mono">
 						{#if loading}
 							<tr>
-								<td colspan="10" class="p-8 text-center text-zinc-500">Loading monitor telemetry...</td>
+								<td colspan="11" class="p-8 text-center text-zinc-500">Loading monitor telemetry...</td>
 							</tr>
-						{:else if monitors.length === 0}
+						{:else if filteredMonitors.length === 0}
 							<tr>
-								<td colspan="10" class="p-8 text-center text-zinc-500">No monitors configured yet. Click "+ Add Monitor" above.</td>
+								<td colspan="11" class="p-8 text-center text-zinc-500">
+									{searchQuery ? 'No monitors matching search query.' : 'No monitors configured yet. Click "+ Add Monitor" above.'}
+								</td>
 							</tr>
 						{:else}
-							{#each monitors as m (m.id)}
+							{#each filteredMonitors as m (m.id)}
 								<tr class="hover:bg-zinc-800/30 transition-colors">
 									<!-- Status Badge -->
 									<td class="py-3 px-4">
@@ -1269,103 +1372,130 @@
 			{/if}
 		{/if}
 
-		<!-- Agent Telemetry Cards Section -->
+		<!-- Agent Telemetry Small Compact Table Section -->
 		{#if monitors.some((m) => m.type === 'agent_linux' || m.type === 'agent_php')}
-			<div class="space-y-4">
-				<div class="flex items-center justify-between">
+			<div class="rounded-xl bg-[#18181b] border border-[#27272a] shadow-sm space-y-0 overflow-hidden">
+				<div class="px-5 py-4 border-b border-[#27272a] flex items-center justify-between">
 					<h2 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
 						<span>🖥️</span> Agent Server Telemetry
 					</h2>
+					<span class="text-xs font-mono text-zinc-400">
+						{monitors.filter((m) => m.type === 'agent_linux' || m.type === 'agent_php').length} Active Agents
+					</span>
 				</div>
 
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-					{#each monitors.filter((m) => m.type === 'agent_linux' || m.type === 'agent_php') as m (m.id)}
-						{@const metrics = m.agent_metrics}
-						<button
-							type="button"
-							onclick={() => openTelemetryModal(m)}
-							class="p-5 rounded-xl bg-[#18181b] border border-[#27272a] hover:border-emerald-500/40 transition-all cursor-pointer space-y-4 group relative text-left w-full"
-						>
-							<div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
-								<div>
-									<h3 class="font-semibold text-sm text-white group-hover:text-emerald-400 transition-colors">{m.name}</h3>
-									<span class="text-[10px] font-mono text-zinc-400">{metrics?.os_info || m.type}</span>
-								</div>
-								<div class="text-right">
-									<div class="flex items-center justify-end gap-1.5">
-										<span class="w-2 h-2 rounded-full {m.latest_status === 1 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
-										<span class="text-xs font-mono font-bold text-white">{m.latest_status === 1 ? 'UP' : 'DOWN'}</span>
-									</div>
-									<div class="text-[10px] font-mono text-emerald-400 mt-0.5">
-										Last ping: <strong class="text-white">{formatRelativeTime(m.last_check)}</strong>
-									</div>
-								</div>
-							</div>
+				<div class="overflow-x-auto">
+					<table class="w-full text-left border-collapse">
+						<thead>
+							<tr class="bg-[#09090b]/50 border-b border-[#27272a] text-[11px] font-mono text-zinc-400 uppercase">
+								<th class="py-2.5 px-4">Status</th>
+								<th class="py-2.5 px-4">Server / Host</th>
+								<th class="py-2.5 px-4">OS / Agent</th>
+								<th class="py-2.5 px-4">CPU Load</th>
+								<th class="py-2.5 px-4">RAM Usage</th>
+								<th class="py-2.5 px-4">Disk Fill</th>
+								<th class="py-2.5 px-4">Last Check</th>
+								<th class="py-2.5 px-4 text-right">Details</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-[#27272a]/60 text-xs font-mono">
+							{#each monitors.filter((m) => m.type === 'agent_linux' || m.type === 'agent_php') as m (m.id)}
+								{@const metrics = m.agent_metrics}
+								{@const ramPct = metrics && metrics.ram_total > 0 ? Math.min(100, Math.round((metrics.ram_used / metrics.ram_total) * 100)) : 0}
+								<tr
+									onclick={() => openTelemetryModal(m)}
+									class="hover:bg-zinc-800/40 transition-colors cursor-pointer group"
+								>
+									<!-- Status -->
+									<td class="py-2.5 px-4">
+										<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold {m.latest_status === 1 ? 'bg-emerald-950/80 border border-emerald-500/30 text-emerald-400' : 'bg-rose-950/80 border border-rose-500/40 text-rose-400'}">
+											<span class="w-1.5 h-1.5 rounded-full {m.latest_status === 1 ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
+											{m.latest_status === 1 ? 'UP' : 'DOWN'}
+										</span>
+									</td>
 
-							{#if metrics}
-								<!-- Detailed CPU Metrics Breakdown (User, Sys, IOWait, Steal) -->
-								<div class="grid grid-cols-4 gap-1 text-[10px] font-mono p-2 rounded bg-[#09090b] border border-zinc-800 text-center">
-									<div>
-										<span class="block text-zinc-500 text-[9px]">USER</span>
-										<span class="text-emerald-400 font-bold">{metrics.cpu_user ?? 0}%</span>
-									</div>
-									<div>
-										<span class="block text-zinc-500 text-[9px]">SYS</span>
-										<span class="text-indigo-400 font-bold">{metrics.cpu_system ?? 0}%</span>
-									</div>
-									<div>
-										<span class="block text-zinc-500 text-[9px]">IOWAIT</span>
-										<span class="text-rose-400 font-bold">{metrics.cpu_iowait ?? 0}%</span>
-									</div>
-									<div>
-										<span class="block text-zinc-500 text-[9px] font-bold text-amber-400">STEAL</span>
-										<span class="text-amber-300 font-bold">{metrics.cpu_steal ?? 0}%</span>
-									</div>
-								</div>
+									<!-- Server Name -->
+									<td class="py-2.5 px-4">
+										<div class="font-semibold text-white font-sans group-hover:text-emerald-400 transition-colors">{m.name}</div>
+									</td>
 
-								<!-- RAM Usage Bar -->
-								{#if metrics.ram_total > 0}
-									{@const ramPct = Math.min(100, Math.round((metrics.ram_used / metrics.ram_total) * 100))}
-									<div>
-										<div class="flex justify-between text-xs font-mono mb-1">
-											<span class="text-zinc-400">RAM Usage</span>
-											<span class="text-zinc-200">{metrics.ram_used} / {metrics.ram_total} MB ({ramPct}%)</span>
-										</div>
-										<div class="w-full h-2 rounded bg-zinc-800 overflow-hidden">
-											<div
-												class="h-full transition-all duration-300 {ramPct > 85 ? 'bg-rose-500' : ramPct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}"
-												style="width: {ramPct}%;"
-											></div>
-										</div>
-									</div>
-								{/if}
+									<!-- OS / Agent -->
+									<td class="py-2.5 px-4 text-zinc-400 text-[11px]">
+										{metrics?.os_info || (m.type === 'agent_linux' ? 'Linux Agent' : 'PHP Agent')}
+									</td>
 
-								<!-- Disk Fill Bar -->
-								<div>
-									<div class="flex justify-between text-xs font-mono mb-1">
-										<span class="text-zinc-400">Disk Fill (/)</span>
-										<span class="text-zinc-200">{metrics.disk_pct}%</span>
-									</div>
-									<div class="w-full h-2 rounded bg-zinc-800 overflow-hidden">
-										<div
-											class="h-full transition-all duration-300 {metrics.disk_pct > 90 ? 'bg-rose-500' : metrics.disk_pct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}"
-											style="width: {metrics.disk_pct}%;"
-										></div>
-									</div>
-								</div>
+									<!-- CPU Load / User % -->
+									<td class="py-2.5 px-4">
+										{#if metrics}
+											<div class="flex items-center gap-1.5">
+												<span class="px-1.5 py-0.5 rounded bg-[#09090b] border border-zinc-800 text-[10px] text-emerald-400 font-bold">
+													{metrics.cpu_user ?? 0}% usr
+												</span>
+												<span class="text-zinc-500 text-[10px]">
+													sys:{metrics.cpu_system ?? 0}%
+												</span>
+											</div>
+										{:else}
+											<span class="text-zinc-600">—</span>
+										{/if}
+									</td>
 
-								<!-- Action Footer Trigger -->
-								<div class="pt-2 border-t border-[#27272a] text-[11px] font-mono text-zinc-400 flex items-center justify-between">
-									<span>Click for full CPU graphs & history</span>
-									<span class="text-emerald-400 group-hover:translate-x-0.5 transition-transform">📊 Graphs →</span>
-								</div>
-							{:else}
-								<div class="p-4 text-center text-xs text-zinc-500 font-mono">
-									Awaiting agent telemetry payload...
-								</div>
-							{/if}
-						</button>
-					{/each}
+									<!-- RAM Usage Mini Bar -->
+									<td class="py-2.5 px-4">
+										{#if metrics && metrics.ram_total > 0}
+											<div class="w-32 space-y-0.5">
+												<div class="flex justify-between text-[10px]">
+													<span class="text-zinc-300 font-bold">{ramPct}%</span>
+													<span class="text-zinc-500">{metrics.ram_used}/{metrics.ram_total}MB</span>
+												</div>
+												<div class="w-full h-1.5 rounded bg-zinc-800 overflow-hidden">
+													<div
+														class="h-full transition-all duration-300 {ramPct > 85 ? 'bg-rose-500' : ramPct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}"
+														style="width: {ramPct}%;"
+													></div>
+												</div>
+											</div>
+										{:else}
+											<span class="text-zinc-600">—</span>
+										{/if}
+									</td>
+
+									<!-- Disk Fill Mini Bar -->
+									<td class="py-2.5 px-4">
+										{#if metrics && metrics.disk_pct !== undefined}
+											<div class="w-24 space-y-0.5">
+												<div class="text-[10px] text-zinc-300 font-bold">{metrics.disk_pct}%</div>
+												<div class="w-full h-1.5 rounded bg-zinc-800 overflow-hidden">
+													<div
+														class="h-full transition-all duration-300 {metrics.disk_pct > 90 ? 'bg-rose-500' : metrics.disk_pct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}"
+														style="width: {metrics.disk_pct}%;"
+													></div>
+												</div>
+											</div>
+										{:else}
+											<span class="text-zinc-600">—</span>
+										{/if}
+									</td>
+
+									<!-- Last Check -->
+									<td class="py-2.5 px-4 text-zinc-400 text-[11px]">
+										{formatRelativeTime(m.last_check)}
+									</td>
+
+									<!-- Details Button -->
+									<td class="py-2.5 px-4 text-right">
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); openTelemetryModal(m); }}
+											class="px-2.5 py-1 bg-zinc-800 hover:bg-emerald-950/80 hover:border-emerald-500/50 border border-zinc-700 text-emerald-400 rounded text-[11px] font-semibold transition-colors flex items-center gap-1 ml-auto"
+										>
+											<span>📊</span> Details
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
 			</div>
 		{/if}
