@@ -1,3 +1,5 @@
+import express from 'express';
+import { getMonitorByToken, insertHeartbeat, getLatestHeartbeat } from '../db.js';
 import { createRateLimiter, BruteForceTracker, getClientIp } from '../rateLimiter.js';
 
 const router = express.Router();
