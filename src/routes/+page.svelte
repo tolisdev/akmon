@@ -192,7 +192,7 @@
 								{groupName}
 							</h2>
 							<div class="text-xs font-mono text-zinc-400">
-								{groupMonitors.filter((m) => m.status === 1).length} / {groupMonitors.length} Operational
+								{groupMonitors.filter((m) => m.status === 1 || m.status === 2).length} / {groupMonitors.length} Operational
 							</div>
 						</div>
 

@@ -175,8 +175,8 @@ const stmtGetLatestHeartbeat = db.prepare(`
 const stmtGetMonitorStats = db.prepare(`
   SELECT 
     COUNT(*) as total,
-    SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as up_count,
-    AVG(CASE WHEN status = 1 THEN ping_ms ELSE NULL END) as avg_ping
+    SUM(CASE WHEN status = 1 OR status = 2 THEN 1 ELSE 0 END) as up_count,
+    AVG(CASE WHEN status = 1 OR status = 2 THEN ping_ms ELSE NULL END) as avg_ping
   FROM heartbeats
   WHERE monitor_id = ?
 `);
